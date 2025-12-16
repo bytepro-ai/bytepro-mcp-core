@@ -1,0 +1,22 @@
+{
+  "name": "@bytepro/mcp-core",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Core runtime for building MCP servers that connect enterprise systems to AI.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bytepro-ai/bytepro-mcp-core.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "Apache-2.0",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/bytepro-ai/bytepro-mcp-core/issues"
+  },
+  "homepage": "https://github.com/bytepro-ai/bytepro-mcp-core#readme"
+}
