@@ -223,3 +223,96 @@ No technical debt introduced:
 ## 🎉 Ready for Testing
 
 The implementation is complete and ready for Day 6 manual testing with a real PostgreSQL database!
+
+# MCP Core Library – Week 2 Implementation Summary
+
+## Overview: `query_read` Tool
+
+The `query_read` tool enables secure, read-only SELECT query execution against PostgreSQL databases within the MCP Core Library. It enforces strict validation, allowlist-based access control, and deterministic resource limits. The tool is designed for minimal attack surface and deterministic behavior, consistent with the security posture established in Week 1.
+
+## Execution Flow
+
+1. **Input Validation**
+   - Input schema is validated using Zod.
+   - The SQL query is checked for length, type, and basic structure.
+
+2. **Query Validation**
+   - The query is checked to ensure it is a single SELECT statement.
+   - Regex-based guards enforce:
+     - No semicolons (multi-statement prevention)
+     - No comments (`--`, `/* ... */`)
+     - No forbidden constructs (UNION, WITH, CTEs, OFFSET, implicit joins)
+     - No write operations (INSERT, UPDATE, DELETE, etc.)
+   - Table names are extracted using best-effort regex.
+   - If no tables are found, or if implicit joins are detected, the query is rejected.
+
+3. **Permissions Enforcement**
+   - Extracted tables are checked against the configured allowlist.
+   - If any table is not allowed, the query is rejected.
+   - Fail-closed: ambiguous or unrecognized table references result in rejection.
+
+4. **Safe Execution**
+   - The query is executed in a PostgreSQL `READ ONLY` transaction.
+   - Server-side `LIMIT` is injected or clamped as needed; post-execution truncation is applied as a fallback.
+   - Query timeout is enforced at the database level.
+   - On any error, the transaction is rolled back and the connection is cleaned up.
+
+5. **Response Formatting**
+   - Results are returned with row data, metadata (row count, execution time, truncation status), and MCP-compliant error handling.
+   - Audit logging records only non-sensitive metadata (query hash, accessed tables, row count, duration, error code).
+
+## Security Guarantees
+
+- **Read-Only Enforcement:** All queries are executed in a `READ ONLY` transaction; no writes are possible.
+- **Single-Statement Only:** Multi-statement queries are rejected.
+- **Strict Construct Blocking:** Comments, CTEs, UNION, OFFSET, and implicit joins are explicitly blocked.
+- **Allowlist Enforcement:** Only explicitly allowed tables can be accessed; ambiguous queries are rejected.
+- **Resource Limits:** Server-enforced row limits and timeouts prevent resource exhaustion.
+- **Error Sanitization:** No raw database error messages are exposed to clients.
+- **Fail-Closed Defaults:** Any ambiguity or extraction failure results in query rejection.
+
+## Explicitly Blocked Constructs
+
+- **Implicit Joins:** Queries using comma-separated tables in the FROM clause (e.g., `FROM a, b`) are rejected.
+- **OFFSET:** The OFFSET keyword is blocked to prevent denial-of-service via large offset scans.
+- **CTEs and Set Operations:** WITH, UNION, INTERSECT, and EXCEPT are blocked.
+- **Comments:** Both single-line (`--`) and block (`/* ... */`) comments are rejected.
+- **Multi-Statements:** Semicolons are not allowed.
+- **Write Operations:** INSERT, UPDATE, DELETE, TRUNCATE, DROP, ALTER, and similar are blocked.
+- **Locking and INTO Clauses:** FOR UPDATE, FOR SHARE, and SELECT INTO are blocked.
+
+## Error Taxonomy
+
+The tool returns MCP-compliant structured errors using the following codes:
+
+- `INVALID_INPUT` – Input schema or type validation failed.
+- `INVALID_QUERY_SYNTAX` – Query is not a valid single SELECT or contains forbidden constructs.
+- `FORBIDDEN_CONSTRUCT` – Query contains explicitly blocked SQL features (e.g., CTEs, OFFSET, implicit joins).
+- `UNAUTHORIZED_TABLE` – Query references tables not in the allowlist.
+- `QUERY_TIMEOUT` – Query exceeded the allowed execution time.
+- `QUERY_FAILED` – Query failed for a non-specific reason.
+- `CONNECTION_FAILED` – Database connection could not be established.
+- `EXECUTION_ERROR` – Query execution failed; no raw database error details are exposed.
+
+## Known Limitations (Week 2)
+
+- **Regex-Based Table Extraction:** Table extraction is best-effort and may over-extract, but never under-extracts. Ambiguous or unrecognized queries are rejected.
+- **LIMIT in String Literals:** LIMIT detection may match inside string literals; post-execution truncation and timeouts provide defense-in-depth.
+- **No Subqueries:** Subqueries are not supported or reliably detected in Week 2.
+- **No Function-Level Validation:** SQL functions are not allowlisted or blocked; safety is enforced by the `READ ONLY` transaction.
+- **No OFFSET Support:** OFFSET is blocked to prevent resource exhaustion.
+- **No AST Parsing:** No SQL parser or AST logic is used; all validation is regex-based.
+
+These limitations are accepted for Week 2 to ensure a minimal, auditable, and robust security baseline.
+
+## Deferred to Week 3
+
+- **AST-Based SQL Parsing:** Introduction of a SQL parser for more accurate construct and table extraction.
+- **Subquery Support:** Controlled support for subqueries with AST validation.
+- **OFFSET and Pagination:** Safe support for OFFSET and cursor-based pagination.
+- **Function-Level Allowlisting:** Validation of allowed and forbidden SQL functions.
+- **Advanced Column Filtering:** Potential for column-level allowlists and masking.
+
+---
+
+This document summarizes the Week 2 implementation of the MCP Core Library, focusing on secure, deterministic, and minimal read-only query execution for PostgreSQL.

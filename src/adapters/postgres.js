@@ -227,7 +227,7 @@ export class PostgresAdapter extends BaseAdapter {
       const tables = validation.tables;
 
       // Step 2: Enforce permissions (allowlist check)
-      enforceQueryPermissions(tables);
+      enforceQueryPermissions(query);
 
       // Step 3: Validate and normalize limits/timeouts
       const normalizedLimit = this._normalizeLimit(limit);
@@ -306,7 +306,7 @@ export class PostgresAdapter extends BaseAdapter {
     }
 
     // Generic execution error
-    return this._createError('EXECUTION_ERROR', error.message || 'Query execution failed');
+    return this._createError('EXECUTION_ERROR', 'Query execution failed');
   }
 
   /**

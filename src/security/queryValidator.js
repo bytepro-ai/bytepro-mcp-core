@@ -116,6 +116,13 @@ export function extractTables(query) {
     const schema = match[1] || 'public'; // Default to public schema
     const table = match[2];
     tables.add(`${schema}.${table}`);
+
+    // SECURITY CHECK: Implicit Joins
+    // Check for comma immediately following the match (ignoring whitespace)
+    const remainder = query.slice(fromPattern.lastIndex);
+    if (/^\s*,/.test(remainder)) {
+      throw new Error("Implicit joins (comma-separated tables) are not allowed. Use explicit JOIN syntax.");
+    }
   }
 
   // Pattern 2: JOIN clause
@@ -146,21 +153,25 @@ export function validateQueryWithTables(query) {
     return validation;
   }
 
-  // Extract table references
-  const tables = extractTables(query);
+  try {
+    // Extract table references
+    const tables = extractTables(query);
 
-  // Fail-closed rule: Queries with no extractable tables are rejected
-  // This prevents table-less queries like: SELECT 1+1, SELECT NOW(), etc.
-  // Over-extraction is acceptable; under-extraction will be caught by allowlist
-  if (tables.length === 0) {
+    // Fail-closed rule: Queries with no extractable tables are rejected
+    // This prevents table-less queries like: SELECT 1+1, SELECT NOW(), etc.
+    // Over-extraction is acceptable; under-extraction will be caught by allowlist
+    if (tables.length === 0) {
+      return { 
+        valid: false, 
+        reason: 'Query must reference at least one table (fail-closed validation)' 
+      };
+    }
+
     return { 
-      valid: false, 
-      reason: 'Query must reference at least one table (fail-closed validation)' 
+      valid: true, 
+      tables 
     };
+  } catch (error) {
+    return { valid: false, reason: error.message };
   }
-
-  return { 
-    valid: true, 
-    tables 
-  };
 }
