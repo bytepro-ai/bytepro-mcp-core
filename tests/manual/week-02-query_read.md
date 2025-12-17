@@ -429,6 +429,16 @@ Walk through each item and confirm:
 
 ---
 
+## Test Results
+
+All Week 2 tests passed:
+- Valid SELECT queries succeed
+- Invalid or unsafe queries are rejected
+- No schema leakage observed
+- Runtime behavior verified against PostgreSQL
+
+---
+
 ## Test Completion
 
 Once all sections are complete and all checkpoints confirmed:

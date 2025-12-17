@@ -113,12 +113,16 @@ export function extractTables(query) {
   let match;
   
   while ((match = fromPattern.exec(query)) !== null) {
-    const schema = match[1] || 'public'; // Default to public schema
+    const schema = match[1];
+    if (!schema) {
+      throw new Error('Table references must be schema-qualified (schema.table)');
+    }
     const table = match[2];
     tables.add(`${schema}.${table}`);
 
     // SECURITY CHECK: Implicit Joins
     // Check for comma immediately following the match (ignoring whitespace)
+    // This check is only valid if we are in the FROM clause context
     const remainder = query.slice(fromPattern.lastIndex);
     if (/^\s*,/.test(remainder)) {
       throw new Error("Implicit joins (comma-separated tables) are not allowed. Use explicit JOIN syntax.");
@@ -130,7 +134,10 @@ export function extractTables(query) {
   const joinPattern = /\b(?:INNER\s+|LEFT\s+|RIGHT\s+|FULL\s+)?JOIN\s+(?:(\w+)\.)?(\w+)/gi;
   
   while ((match = joinPattern.exec(query)) !== null) {
-    const schema = match[1] || 'public'; // Default to public schema
+    const schema = match[1];
+    if (!schema) {
+      throw new Error('Table references must be schema-qualified (schema.table)');
+    }
     const table = match[2];
     tables.add(`${schema}.${table}`);
   }

@@ -316,3 +316,17 @@ These limitations are accepted for Week 2 to ensure a minimal, auditable, and ro
 ---
 
 This document summarizes the Week 2 implementation of the MCP Core Library, focusing on secure, deterministic, and minimal read-only query execution for PostgreSQL.
+
+## Week 2 — query_read (Completed)
+
+- Introduced `query_read` MCP tool for read-only SQL execution
+- Enforced SELECT-only, single-statement queries
+- PostgreSQL adapter hardened for safe execution
+- Mandatory schema-qualified table references (schema.table)
+- Explicit JOIN allowed; implicit joins rejected
+- OFFSET rejected
+- Writes (INSERT/UPDATE/DELETE) rejected
+- Server-side LIMIT enforced
+- Safe PostgreSQL timeout handling (non-parameterized SET LOCAL)
+- Errors sanitized to prevent schema or column leakage
+- Tested end-to-end via MCP Inspector (stdio transport)

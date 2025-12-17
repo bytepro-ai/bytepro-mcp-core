@@ -207,7 +207,7 @@ class PostgresPool {
       await client.query('BEGIN READ ONLY');
       
       // Set statement timeout (server-side enforcement)
-      await client.query('SET LOCAL statement_timeout = $1', [timeout]);
+      await client.query(`SET LOCAL statement_timeout = ${timeout}`);
       
       // Execute the query
       const result = await client.query(limitedQuery, params);
