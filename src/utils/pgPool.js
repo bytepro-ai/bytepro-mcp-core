@@ -172,6 +172,144 @@ class PostgresPool {
       throw error;
     }
   }
+
+  /**
+   * Execute a read-only query with safety enforcements
+   * 
+   * Enforces:
+   * - READ ONLY transaction
+   * - Query timeout
+   * - Server-side LIMIT (never trust client)
+   * - Max rows enforcement (post-execution truncation)
+   * 
+   * @param {string} query - SQL SELECT query
+   * @param {Array} params - Query parameters
+   * @param {Object} options - Execution options
+   * @param {number} options.timeout - Query timeout in milliseconds (default: 10000)
+   * @param {number} options.maxRows - Maximum rows to return (default: 100, max: 1000)
+   * @returns {Promise<{rows, fields, rowCount, executionTime, truncated, appliedLimit}>}
+   */
+  async executeSafeRead(query, params = [], options = {}) {
+    const { timeout = 10000, maxRows = 100 } = options;
+    
+    // Enforce server-side max limit (never trust client)
+    const enforcedLimit = Math.min(Math.max(1, maxRows), 1000);
+    
+    // Inject LIMIT if missing, clamp if present
+    const limitedQuery = this._enforceLimitClause(query, enforcedLimit);
+    
+    const pool = this.getPool();
+    const client = await pool.connect();
+    const startTime = Date.now();
+
+    try {
+      // Begin READ ONLY transaction
+      await client.query('BEGIN READ ONLY');
+      
+      // Set statement timeout (server-side enforcement)
+      await client.query('SET LOCAL statement_timeout = $1', [timeout]);
+      
+      // Execute the query
+      const result = await client.query(limitedQuery, params);
+      
+      // Commit transaction
+      await client.query('COMMIT');
+      
+      const executionTime = Date.now() - startTime;
+      
+      // Post-execution truncation (defense in depth)
+      // If database returned more than limit, truncate
+      let truncated = false;
+      let rows = result.rows;
+      
+      if (rows.length > enforcedLimit) {
+        rows = rows.slice(0, enforcedLimit);
+        truncated = true;
+        logger.warn(
+          { returnedRows: result.rows.length, enforcedLimit },
+          'Query returned more rows than limit, truncated'
+        );
+      }
+      
+      logger.debug(
+        { 
+          executionTime, 
+          rowCount: rows.length, 
+          truncated,
+          appliedLimit: enforcedLimit
+        }, 
+        'Safe read query executed'
+      );
+      
+      return {
+        rows,
+        fields: result.fields,
+        rowCount: rows.length,
+        executionTime,
+        truncated,
+        appliedLimit: enforcedLimit
+      };
+      
+    } catch (error) {
+      const executionTime = Date.now() - startTime;
+      
+      // MANDATORY: Always ROLLBACK on error to prevent dangling transactions
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        logger.error(
+          { error: rollbackError.message },
+          'Failed to ROLLBACK transaction after error'
+        );
+      }
+      
+      logger.error(
+        {
+          error: error.message,
+          executionTime,
+          timeout,
+          enforcedLimit
+        },
+        'Safe read query failed'
+      );
+      
+      throw error;
+      
+    } finally {
+      // Always release client back to pool
+      client.release();
+    }
+  }
+
+  /**
+   * Enforce LIMIT clause on a query
+   * - If query has no LIMIT: append LIMIT
+   * - If query has LIMIT: clamp to server max
+   * 
+   * @private
+   * @param {string} query - SQL query
+   * @param {number} maxLimit - Server-enforced maximum LIMIT
+   * @returns {string} Query with enforced LIMIT
+   */
+  _enforceLimitClause(query, maxLimit) {
+    // Check if query already has LIMIT clause (case-insensitive)
+    const limitRegex = /\bLIMIT\s+(\d+)\b/i;
+    const match = limitRegex.exec(query);
+    
+    if (match) {
+      // Query has LIMIT - clamp to server max
+      const clientLimit = parseInt(match[1], 10);
+      const clampedLimit = Math.min(clientLimit, maxLimit);
+      
+      // Replace existing LIMIT with clamped value
+      return query.replace(limitRegex, `LIMIT ${clampedLimit}`);
+    } else {
+      // Query has no LIMIT - append server max
+      // Preserve trailing whitespace/semicolons
+      const trimmed = query.trimEnd();
+      return `${trimmed} LIMIT ${maxLimit}`;
+    }
+  }
 }
 
 // Export singleton instance

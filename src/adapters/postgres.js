@@ -3,6 +3,8 @@ import { pgPool } from '../utils/pgPool.js';
 import { allowlist } from '../security/allowlist.js';
 import { queryGuard } from '../security/queryGuard.js';
 import { logger } from '../utils/logger.js';
+import { validateQueryWithTables } from '../security/queryValidator.js';
+import { enforceQueryPermissions } from '../security/permissions.js';
 
 /**
  * PostgreSQL adapter implementation
@@ -195,6 +197,129 @@ export class PostgresAdapter extends BaseAdapter {
       this.logError('describeTable', params, error);
       throw error;
     }
+  }
+
+  /**
+   * Execute a read-only SELECT query with security enforcement
+   * @param {Object} params - Query parameters
+   * @param {string} params.query - SQL query string
+   * @param {Array} [params.params] - Query parameters
+   * @param {number} [params.limit] - Maximum rows to return (default: 100, max: 1000)
+   * @param {number} [params.timeout] - Query timeout in milliseconds (default: 30000, max: 60000)
+   * @returns {Promise<Object>} Query results with metadata
+   */
+  async executeQuery(params) {
+    const startTime = Date.now();
+
+    try {
+      const { query, params: queryParams = [], limit = 100, timeout = 30000 } = params;
+
+      if (!query || typeof query !== 'string') {
+        throw this._createError('INVALID_INPUT', 'Query must be a non-empty string');
+      }
+
+      // Step 1: Validate query structure (regex-based security validation)
+      const validation = validateQueryWithTables(query);
+      if (!validation.valid) {
+        throw this._createError('QUERY_REJECTED', validation.error);
+      }
+
+      const tables = validation.tables;
+
+      // Step 2: Enforce permissions (allowlist check)
+      enforceQueryPermissions(tables);
+
+      // Step 3: Validate and normalize limits/timeouts
+      const normalizedLimit = this._normalizeLimit(limit);
+      const normalizedTimeout = this._normalizeTimeout(timeout);
+
+      // Step 4: Execute via safe read method (READ ONLY transaction, enforced LIMIT, timeout)
+      const result = await pgPool.executeSafeRead(query, queryParams, {
+        maxLimit: normalizedLimit,
+        timeout: normalizedTimeout,
+      });
+
+      // Step 5: Log operation (no query text or params in logs)
+      this.logOperation('executeQuery', { tableCount: tables.length, limit: normalizedLimit }, startTime, result);
+
+      return {
+        rows: result.rows,
+        rowCount: result.rowCount,
+        fields: result.fields.map((f) => ({ name: f.name, dataTypeID: f.dataTypeID })),
+        executionTime: result.executionTime,
+        truncated: result.truncated,
+        appliedLimit: result.appliedLimit,
+      };
+    } catch (error) {
+      // Map to standardized error codes
+      const mappedError = this._mapExecutionError(error);
+      this.logError('executeQuery', { hasQuery: !!params.query }, mappedError);
+      throw mappedError;
+    }
+  }
+
+  /**
+   * Normalize and validate limit parameter
+   * @private
+   */
+  _normalizeLimit(limit) {
+    const parsed = parseInt(limit, 10);
+    if (isNaN(parsed) || parsed < 1) {
+      return 100; // default
+    }
+    return Math.min(parsed, 1000); // max
+  }
+
+  /**
+   * Normalize and validate timeout parameter
+   * @private
+   */
+  _normalizeTimeout(timeout) {
+    const parsed = parseInt(timeout, 10);
+    if (isNaN(parsed) || parsed < 1000) {
+      return 30000; // default 30s
+    }
+    return Math.min(parsed, 60000); // max 60s
+  }
+
+  /**
+   * Map execution errors to standardized error codes
+   * @private
+   */
+  _mapExecutionError(error) {
+    // If error already has a code from security layers, preserve it
+    if (error.code && ['QUERY_REJECTED', 'PERMISSION_DENIED', 'INVALID_INPUT'].includes(error.code)) {
+      return error;
+    }
+
+    // Map database errors
+    if (error.code === '57014') {
+      return this._createError('TIMEOUT', 'Query execution timeout');
+    }
+
+    if (error.code && error.code.startsWith('42')) {
+      return this._createError('SYNTAX_ERROR', 'SQL syntax error');
+    }
+
+    if (error.message && error.message.includes('does not exist')) {
+      return this._createError('OBJECT_NOT_FOUND', 'Referenced table or column not found');
+    }
+
+    // Generic execution error
+    return this._createError('EXECUTION_ERROR', error.message || 'Query execution failed');
+  }
+
+  /**
+   * Create structured error object
+   * @private
+   */
+  _createError(code, message, details = null) {
+    const error = new Error(message);
+    error.code = code;
+    if (details) {
+      error.details = details;
+    }
+    return error;
   }
 }
 

@@ -6,6 +6,7 @@ import * as responseFormatter from './responseFormatter.js';
 // Import tools
 import { listTablesTool } from '../tools/listTables.js';
 import { describeTableTool } from '../tools/describeTable.js';
+import { queryReadTool } from '../tools/queryRead.js';
 
 /**
  * Tool registry for managing and executing MCP tools
@@ -27,6 +28,7 @@ export class ToolRegistry {
     // Register all available tools
     this.registerTool(listTablesTool);
     this.registerTool(describeTableTool);
+    this.registerTool(queryReadTool);
 
     logger.info({ tools: Array.from(this.tools.keys()) }, 'Tool registry initialized');
   }
