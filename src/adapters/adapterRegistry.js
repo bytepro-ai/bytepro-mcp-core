@@ -1,4 +1,5 @@
 import { PostgresAdapter } from './postgres.js';
+import { MySQLAdapter } from './mysql.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -12,6 +13,7 @@ export class AdapterRegistry {
 
     // Register available adapters
     this.registerAdapter('postgres', PostgresAdapter);
+    this.registerAdapter('mysql', MySQLAdapter);
 
     logger.info({ adapters: Array.from(this.adapters.keys()) }, 'Adapter registry initialized');
   }

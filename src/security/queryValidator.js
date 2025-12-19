@@ -38,8 +38,9 @@ export function validateQuery(query) {
 
   // Rule 3: Reject SQL comments (obfuscation prevention)
   // Prevents attacks like: SELECT * FROM users -- WHERE admin = false
-  if (normalized.includes('--') || normalized.includes('/*') || normalized.includes('*/')) {
-    return { valid: false, reason: 'Query must not contain comments (-- or /* */forbidden)' };
+  // Also reject MySQL # comments for adapter-agnostic security
+  if (normalized.includes('--') || normalized.includes('/*') || normalized.includes('*/') || normalized.includes('#')) {
+    return { valid: false, reason: 'Query must not contain comments (-- or /* */ or # forbidden)' };
   }
 
   // Rule 4: Reject null bytes and control characters
@@ -146,13 +147,211 @@ export function extractTables(query) {
 }
 
 /**
+ * Build qualifier-to-table mapping from FROM/JOIN clauses
+ * Maps aliases and unambiguous table names to schema.table
+ * 
+ * @param {string} query - SQL query string
+ * @returns {Map<string, string>} Map of qualifier -> schema.table
+ */
+function buildQualifierMap(query) {
+  const qualifierMap = new Map();
+  const tableOccurrences = new Map(); // Track table name occurrences for ambiguity detection
+
+  // Pattern: FROM/JOIN schema.table [AS] alias
+  const tablePattern = /\b(?:FROM|(?:INNER\s+|LEFT\s+|RIGHT\s+|FULL\s+)?JOIN)\s+(\w+)\.(\w+)(?:\s+(?:AS\s+)?(\w+))?/gi;
+  let match;
+
+  while ((match = tablePattern.exec(query)) !== null) {
+    const schema = match[1];
+    const table = match[2];
+    const alias = match[3];
+    const fullTableName = `${schema}.${table}`;
+
+    // Register alias if present
+    if (alias) {
+      const aliasLower = alias.toLowerCase();
+      // Fail-closed: reject duplicate alias definitions
+      if (qualifierMap.has(aliasLower)) {
+        throw new Error(`Duplicate alias definition: ${alias}`);
+      }
+      qualifierMap.set(aliasLower, fullTableName);
+    }
+
+    // Track table name for ambiguity detection
+    const tableLower = table.toLowerCase();
+    if (!tableOccurrences.has(tableLower)) {
+      tableOccurrences.set(tableLower, []);
+    }
+    tableOccurrences.get(tableLower).push(fullTableName);
+  }
+
+  // Register unambiguous table names
+  for (const [tableName, fullNames] of tableOccurrences.entries()) {
+    if (fullNames.length === 1) {
+      qualifierMap.set(tableName, fullNames[0]);
+    }
+  }
+
+  return qualifierMap;
+}
+
+/**
+ * Validate ORDER BY clause with strict allowlist enforcement
+ * 
+ * Rules:
+ * - Single ORDER BY clause only
+ * - Maximum 2 sort keys
+ * - Explicit ASC/DESC required for every key
+ * - Only qualified identifiers: alias.column or schema.table.column
+ * - Bare columns, expressions, functions, numeric positions rejected
+ * - Only allowlisted columns permitted
+ * 
+ * @param {string} query - SQL query string (pre-validated)
+ * @param {Set<string>} allowedOrderByColumns - Set of schema.table.column strings
+ * @returns {{ valid: boolean, reason?: string }} Validation result
+ */
+function validateOrderBy(query, allowedOrderByColumns) {
+  // Check if query contains ORDER BY
+  const orderByPattern = /\bORDER\s+BY\b/gi;
+  const matches = query.match(orderByPattern);
+
+  if (!matches) {
+    // No ORDER BY clause - valid
+    return { valid: true };
+  }
+
+  // Rule: Single ORDER BY only (fail-closed on nested queries)
+  if (matches.length > 1) {
+    return {
+      valid: false,
+      reason: 'Multiple ORDER BY clauses not supported (fail-closed)',
+    };
+  }
+
+  // Check if ORDER BY is allowed
+  if (!allowedOrderByColumns || allowedOrderByColumns.size === 0) {
+    return {
+      valid: false,
+      reason: 'ORDER BY not permitted (no allowed columns configured)',
+    };
+  }
+
+  // Extract ORDER BY clause tail
+  // Find ORDER BY and capture until LIMIT/FETCH/FOR or end
+  const orderByIndex = query.search(/\bORDER\s+BY\b/i);
+  const afterOrderBy = query.substring(orderByIndex + 8); // Skip "ORDER BY"
+
+  // Find where ORDER BY clause ends
+  const endMatch = afterOrderBy.search(/\b(LIMIT|FETCH|FOR)\b/i);
+  const orderByTail = endMatch >= 0 ? afterOrderBy.substring(0, endMatch) : afterOrderBy;
+
+  // Rule: Reject parentheses (expressions/subqueries)
+  if (orderByTail.includes('(') || orderByTail.includes(')')) {
+    return {
+      valid: false,
+      reason: 'ORDER BY expressions are not allowed (parentheses forbidden)',
+    };
+  }
+
+  // Rule: Reject invalid characters (fail-closed)
+  // Allow only: letters, digits, underscore, dot, comma, whitespace
+  // This prevents digit-leading identifiers and special characters
+  if (!/^[A-Za-z0-9_\s.,]+$/i.test(orderByTail)) {
+    return {
+      valid: false,
+      reason: 'Invalid characters in ORDER BY clause (fail-closed)',
+    };
+  }
+
+  // Build qualifier map for resolution
+  const qualifierMap = buildQualifierMap(query);
+
+  // Split by comma to get individual sort keys
+  const terms = orderByTail.split(',').map((t) => t.trim()).filter((t) => t.length > 0);
+
+  // Rule: Maximum 2 sort keys
+  if (terms.length > 2) {
+    return {
+      valid: false,
+      reason: 'Too many ORDER BY keys (maximum: 2)',
+    };
+  }
+
+  // Validate each term
+  for (const term of terms) {
+    // Rule: Reject numeric positions
+    if (/^\d+(\s+(ASC|DESC))?$/i.test(term)) {
+      return {
+        valid: false,
+        reason: 'ORDER BY positional references are not allowed',
+      };
+    }
+
+    // Parse term: <ref> (ASC|DESC)
+    // Ref can be: alias.column or schema.table.column
+    // Identifier must start with letter or underscore, followed by letters/digits/underscores
+    const IDENT = '[A-Za-z_][A-Za-z0-9_]*';
+    const termPattern = new RegExp(`^((${IDENT})\\.(${IDENT})(?:\\.(${IDENT})?)?)\\s+(ASC|DESC)$`, 'i');
+    const termMatch = term.match(termPattern);
+
+    if (!termMatch) {
+      return {
+        valid: false,
+        reason: 'ORDER BY must use qualified identifiers (alias.column or schema.table.column) with explicit direction (ASC or DESC)',
+      };
+    }
+
+    const fullRef = termMatch[1];
+    const part1 = termMatch[2]; // schema or alias
+    const part2 = termMatch[3]; // table or column
+    const part3 = termMatch[4]; // column (if 3-part)
+    const direction = termMatch[5]; // ASC or DESC
+
+    let resolvedColumn;
+
+    if (part3) {
+      // Three-part: schema.table.column
+      resolvedColumn = fullRef.toLowerCase();
+    } else {
+      // Two-part: qualifier.column
+      const qualifier = part1.toLowerCase();
+      const column = part2.toLowerCase();
+
+      // Resolve qualifier
+      const resolvedTable = qualifierMap.get(qualifier);
+
+      if (!resolvedTable) {
+        return {
+          valid: false,
+          reason: `Unknown or ambiguous ORDER BY qualifier: ${qualifier}`,
+        };
+      }
+
+      resolvedColumn = `${resolvedTable}.${column}`.toLowerCase();
+    }
+
+    // Check allowlist
+    if (!allowedOrderByColumns.has(resolvedColumn)) {
+      return {
+        valid: false,
+        reason: `ORDER BY column not allowed: ${resolvedColumn}`,
+      };
+    }
+  }
+
+  return { valid: true };
+}
+
+/**
  * Validate query and extract tables in one operation
  * Implements fail-closed rule: queries with zero tables are rejected
  * 
  * @param {string} query - Raw SQL query string
+ * @param {Object} [options] - Validation options
+ * @param {string[]} [options.allowedOrderByColumns] - Array of schema.table.column strings for ORDER BY allowlist
  * @returns {{ valid: boolean, reason?: string, tables?: string[] }} Validation result with tables
  */
-export function validateQueryWithTables(query) {
+export function validateQueryWithTables(query, options = {}) {
   // First validate the query structure
   const validation = validateQuery(query);
   
@@ -172,6 +371,19 @@ export function validateQueryWithTables(query) {
         valid: false, 
         reason: 'Query must reference at least one table (fail-closed validation)' 
       };
+    }
+
+    // Validate ORDER BY with strict allowlist enforcement
+    // If allowlist is provided, validate against it
+    // If allowlist is not provided but query has ORDER BY, reject (fail-closed)
+    const allowedSet = options.allowedOrderByColumns
+      ? new Set(options.allowedOrderByColumns.map((col) => col.toLowerCase()))
+      : new Set();
+    
+    const orderByValidation = validateOrderBy(query, allowedSet);
+
+    if (!orderByValidation.valid) {
+      return orderByValidation;
     }
 
     return { 
