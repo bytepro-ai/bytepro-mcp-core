@@ -1,6 +1,23 @@
 # Commit Summary: Week 1 Days 1-5 Implementation
 
-## 🎯 Milestone: Minimal MCP Core Prototype
+
+## 🚩 Milestone: Week 3 — ORDER BY Allowlist (Block 1 Completed)
+
+Strict, regex-based ORDER BY allowlist validator implemented in `src/security/queryValidator.js`.
+- Adapter-agnostic, fail-closed: only qualified identifiers (alias.column or schema.table.column) allowed.
+- Explicit direction (ASC or DESC) required for each sort key.
+- Single ORDER BY clause, max two sort keys enforced.
+- All dialect extensions, ambiguous aliases, and unqualified columns are rejected.
+- MySQL/MariaDB-style `#` comments and all SQL comments are blocked.
+- All known bypasses and ambiguity vectors closed (identifier regex, alias resolution, comment handling).
+- Fails closed on any parsing ambiguity or unsupported syntax.
+- Comprehensive test suite: original, adversarial, and backward compatibility cases.
+- All tests pass; security audit checklist 100% pass.
+- Documentation and manual test guides updated.
+
+---
+
+## 🏆 Milestone: Minimal MCP Core Prototype
 
 Completed comprehensive implementation of BytePro MCP Core (Community Edition) with PostgreSQL support, security controls, and MCP SDK integration.
 

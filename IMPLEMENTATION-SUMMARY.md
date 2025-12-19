@@ -85,11 +85,6 @@ src/
    - Success/failure outcomes
 
 ### MCP Integration
-- Official `@modelcontextprotocol/sdk` v1.0.4
-- stdio transport for MCP Inspector compatibility
-- Two registered tools: `list_tables` and `describe_table`
-- JSON Schema generation from Zod schemas
-- Standardized error responses
 
 ### Configuration
 All configuration via `.env` file:
@@ -108,6 +103,45 @@ MAX_COLUMNS=200
 LOG_LEVEL=info
 LOG_PRETTY=false
 ```
+
+## Week 3 — ORDER BY Allowlist (Block 1 Completed)
+
+### Implementation
+- Strict, regex-based ORDER BY allowlist validator added to `src/security/queryValidator.js`.
+- Adapter-agnostic, fail-closed design: only qualified identifiers (alias.column or schema.table.column) allowed.
+- Explicit direction (ASC or DESC) required for each sort key.
+- Single ORDER BY clause, max two sort keys enforced.
+- All dialect extensions, ambiguous aliases, and unqualified columns are rejected.
+- MySQL/MariaDB-style `#` comments and all SQL comments are blocked.
+- Comprehensive test suite: original, adversarial, and backward compatibility cases.
+
+### Security Posture
+- All known bypasses and ambiguity vectors closed (identifier regex, alias resolution, comment handling).
+- Fails closed on any parsing ambiguity or unsupported syntax.
+- Validated against adversarial and checklist-based security review.
+
+### Validation
+- All tests pass: original, security fixes, and backward compatibility.
+- Security audit checklist: 100% pass.
+- Manual and automated test documentation updated.
+
+---
+
+### MCP Integration
+
+- Official `@modelcontextprotocol/sdk` v1.0.4
+- stdio transport for MCP Inspector compatibility
+- Two registered tools: `list_tables` and `describe_table`
+- JSON Schema generation from Zod schemas
+- Standardized error responses
+
+### Configuration
+All configuration via `.env` file:
+```env
+# PostgreSQL
+PG_HOST, PG_PORT, PG_USER, PG_PASSWORD, PG_DATABASE, PG_SSL
+
+# Security
 
 > **Note:** Avoid using `z.coerce.boolean()` for environment flags. Explicit string parsing is required for reliable behavior, as `z.coerce.boolean()` treats the string "false" as `true` in JavaScript. Always parse environment variables like `PG_SSL` using string comparison (e.g., `val === 'true'`).
 
