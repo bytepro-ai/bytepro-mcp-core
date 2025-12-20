@@ -1,3 +1,42 @@
+## Week 3 — Block 1: ORDER BY Allowlist (Completed)
+
+- Strict, regex-based ORDER BY validation
+- Adapter-agnostic enforcement
+- ORDER BY treated as a query-shape amplifier
+- Single ORDER BY clause enforced
+- Maximum of two sort keys
+- Explicit ASC/DESC required
+- Qualified identifiers only (alias.column or schema.table.column)
+- Bare columns rejected
+- Numeric ORDER BY positions rejected
+- Expressions, functions, parentheses rejected
+- Dialect-specific extensions rejected (NULLS, COLLATE, etc.)
+- Explicit allowlist required; fail-closed when missing
+- Validated via adversarial review and full code inspection
+
+## Week 3 — Block 2: Audit Logging (Completed)
+
+- Security-first audit logging integrated into adapters
+- Logging occurs only after validation
+- Logging on validation rejection, permission rejection, execution success, execution error
+- Exactly one terminal audit event per request
+- Fail-closed behavior if logging fails
+- Adapter-agnostic logging contract
+- Minimal approved payload only (no raw SQL, params, schema, identifiers)
+- HMAC-based query fingerprinting
+- Validated via integration-level security review
+
+## Week 3 — Block 3: MySQL Adapter (Completed)
+
+- MySQL adapter with security parity to PostgreSQL
+- Strict read-only execution
+- Mandatory central validation gate (no bypass)
+- Schema-qualified tables enforced via validator
+- MySQL comment styles rejected
+- OFFSET rejected (including LIMIT y, x form)
+- Server-side LIMIT enforcement and clamping
+- Integrated audit logging
+- Final security review approved with full evidence
 # Implementation Summary - Week 1 Days 1-5
 
 ## ✅ Completed Implementation

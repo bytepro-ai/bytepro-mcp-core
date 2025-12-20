@@ -4,6 +4,7 @@ import { queryGuard } from '../security/queryGuard.js';
 import { logger } from '../utils/logger.js';
 import { validateQueryWithTables } from '../security/queryValidator.js';
 import { enforceQueryPermissions } from '../security/permissions.js';
+import { logQueryEvent, computeQueryFingerprint } from '../security/auditLogger.js';
 
 /**
  * MySQL/MariaDB adapter implementation
@@ -273,6 +274,7 @@ export class MySQLAdapter extends BaseAdapter {
    */
   async executeQuery(params) {
     const startTime = Date.now();
+    let validationPassed = false; // Track whether validation succeeded
 
     try {
       const {
@@ -289,16 +291,32 @@ export class MySQLAdapter extends BaseAdapter {
         );
       }
 
+      // Compute fingerprint once (no raw SQL crosses audit boundary after this)
+      const queryFingerprint = computeQueryFingerprint(query);
+
       // Step 1: Validate query structure (regex-based security validation)
       const validation = validateQueryWithTables(query);
+      
       if (!validation.valid) {
+        // Audit log: validation rejected (AFTER validation, fail-closed)
+        logQueryEvent('mysql', queryFingerprint, 'rejected');
         throw this._createError('QUERY_REJECTED', validation.reason);
       }
 
       const tables = validation.tables;
 
       // Step 2: Enforce permissions (allowlist check)
-      enforceQueryPermissions(query);
+      try {
+        enforceQueryPermissions(query);
+      } catch (permissionError) {
+        // Audit log: permission rejected (AFTER permission check, fail-closed)
+        logQueryEvent('mysql', queryFingerprint, 'rejected');
+        throw permissionError;
+      }
+
+      // Audit log: validation succeeded (AFTER validation + permissions, fail-closed)
+      logQueryEvent('mysql', queryFingerprint, 'validated');
+      validationPassed = true; // Mark validation as complete
 
       // Step 3: Validate and normalize limits/timeouts
       const normalizedLimit = this._normalizeLimit(limit);
@@ -309,6 +327,11 @@ export class MySQLAdapter extends BaseAdapter {
         maxLimit: normalizedLimit,
         timeout: normalizedTimeout,
       });
+
+      const executionTime = Date.now() - startTime;
+
+      // Audit log: execution succeeded (AFTER execution, fail-closed)
+      logQueryEvent('mysql', queryFingerprint, 'success', executionTime);
 
       // Step 5: Log operation (no query text or params in logs)
       this.logOperation(
@@ -332,6 +355,15 @@ export class MySQLAdapter extends BaseAdapter {
     } catch (error) {
       // Map to standardized error codes
       const mappedError = this._mapExecutionError(error);
+      
+      // Audit log: execution failed (ONLY if validation passed)
+      // This prevents duplicate logging of validation failures
+      // Skip if error is AUDIT_FAILURE (to prevent recursion)
+      if (validationPassed && mappedError.code !== 'AUDIT_FAILURE') {
+        const queryFingerprint = computeQueryFingerprint(params.query);
+        logQueryEvent('mysql', queryFingerprint, 'execution_error', Date.now() - startTime);
+      }
+      
       this.logError('executeQuery', { hasQuery: !!params.query }, mappedError);
       throw mappedError;
     }
@@ -501,7 +533,7 @@ export class MySQLAdapter extends BaseAdapter {
     // If error already has a code from security layers, preserve it
     if (
       error.code &&
-      ['QUERY_REJECTED', 'PERMISSION_DENIED', 'INVALID_INPUT'].includes(
+      ['QUERY_REJECTED', 'PERMISSION_DENIED', 'INVALID_INPUT', 'AUDIT_FAILURE'].includes(
         error.code
       )
     ) {

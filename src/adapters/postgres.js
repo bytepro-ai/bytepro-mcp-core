@@ -5,6 +5,7 @@ import { queryGuard } from '../security/queryGuard.js';
 import { logger } from '../utils/logger.js';
 import { validateQueryWithTables } from '../security/queryValidator.js';
 import { enforceQueryPermissions } from '../security/permissions.js';
+import { logQueryEvent, computeQueryFingerprint } from '../security/auditLogger.js';
 
 /**
  * PostgreSQL adapter implementation
@@ -210,6 +211,7 @@ export class PostgresAdapter extends BaseAdapter {
    */
   async executeQuery(params) {
     const startTime = Date.now();
+    let validationPassed = false; // Track whether validation succeeded
 
     try {
       const { query, params: queryParams = [], limit = 100, timeout = 30000 } = params;
@@ -218,16 +220,32 @@ export class PostgresAdapter extends BaseAdapter {
         throw this._createError('INVALID_INPUT', 'Query must be a non-empty string');
       }
 
+      // Compute fingerprint once (no raw SQL crosses audit boundary after this)
+      const queryFingerprint = computeQueryFingerprint(query);
+
       // Step 1: Validate query structure (regex-based security validation)
       const validation = validateQueryWithTables(query);
+      
       if (!validation.valid) {
-        throw this._createError('QUERY_REJECTED', validation.error);
+        // Audit log: validation rejected (AFTER validation, fail-closed)
+        logQueryEvent('postgres', queryFingerprint, 'rejected');
+        throw this._createError('QUERY_REJECTED', validation.reason);
       }
 
       const tables = validation.tables;
 
       // Step 2: Enforce permissions (allowlist check)
-      enforceQueryPermissions(query);
+      try {
+        enforceQueryPermissions(query);
+      } catch (permissionError) {
+        // Audit log: permission rejected (AFTER permission check, fail-closed)
+        logQueryEvent('postgres', queryFingerprint, 'rejected');
+        throw permissionError;
+      }
+
+      // Audit log: validation succeeded (AFTER validation + permissions, fail-closed)
+      logQueryEvent('postgres', queryFingerprint, 'validated');
+      validationPassed = true; // Mark validation as complete
 
       // Step 3: Validate and normalize limits/timeouts
       const normalizedLimit = this._normalizeLimit(limit);
@@ -238,6 +256,11 @@ export class PostgresAdapter extends BaseAdapter {
         maxLimit: normalizedLimit,
         timeout: normalizedTimeout,
       });
+
+      const executionTime = Date.now() - startTime;
+
+      // Audit log: execution succeeded (AFTER execution, fail-closed)
+      logQueryEvent('postgres', queryFingerprint, 'success', executionTime);
 
       // Step 5: Log operation (no query text or params in logs)
       this.logOperation('executeQuery', { tableCount: tables.length, limit: normalizedLimit }, startTime, result);
@@ -253,6 +276,15 @@ export class PostgresAdapter extends BaseAdapter {
     } catch (error) {
       // Map to standardized error codes
       const mappedError = this._mapExecutionError(error);
+      
+      // Audit log: execution failed (ONLY if validation passed)
+      // This prevents duplicate logging of validation failures
+      // Skip if error is AUDIT_FAILURE (to prevent recursion)
+      if (validationPassed && mappedError.code !== 'AUDIT_FAILURE') {
+        const queryFingerprint = computeQueryFingerprint(params.query);
+        logQueryEvent('postgres', queryFingerprint, 'execution_error', Date.now() - startTime);
+      }
+      
       this.logError('executeQuery', { hasQuery: !!params.query }, mappedError);
       throw mappedError;
     }
@@ -288,7 +320,7 @@ export class PostgresAdapter extends BaseAdapter {
    */
   _mapExecutionError(error) {
     // If error already has a code from security layers, preserve it
-    if (error.code && ['QUERY_REJECTED', 'PERMISSION_DENIED', 'INVALID_INPUT'].includes(error.code)) {
+    if (error.code && ['QUERY_REJECTED', 'PERMISSION_DENIED', 'INVALID_INPUT', 'AUDIT_FAILURE'].includes(error.code)) {
       return error;
     }
 
