@@ -6,8 +6,13 @@
 - Week 1: ✅ Complete
 - Week 2: ✅ Complete
 - Week 3 — Block 1 (ORDER BY Allowlist): ✅ Complete
+- Week 3 — Block 2 (Authorization): ✅ Complete
+- Week 3 — Block 3 (Quotas & Rate Limiting): ✅ Complete
 
-Week 3 — Block 1 validated: All tests pass, security audit checklist 100% pass.
+Week 3 validated:
+- Block 1: ORDER BY Allowlist (100% pass)
+- Block 2: Authorization (RBAC/ABAC) (100% pass)
+- Block 3: Quotas & Rate Limiting (100% pass + Security Hardening)
 
 Week 2 validated with real database and MCP Inspector.
 
@@ -41,6 +46,10 @@ Week 2 validated with real database and MCP Inspector.
 - ✅ Query guard blocking dangerous patterns
 - ✅ Result set limiting (100 tables, 200 columns)
 - ✅ Read-only mode by default
+- ✅ Role-Based Access Control (RBAC)
+- ✅ Attribute-Based Access Control (ABAC)
+- ✅ Quota & Rate Limiting (Token Bucket)
+- ✅ Audit Logging
 
 ### Tools
 - ✅ `list_tables` - List all tables in allowed schemas

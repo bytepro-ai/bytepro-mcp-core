@@ -39,9 +39,10 @@ export class BaseAdapter {
    * List all tables in the database
    * @param {Object} [params] - Query parameters
    * @param {string} [params.schema] - Optional schema filter
+   * @param {SessionContext} sessionContext - Bound session context (identity + tenant)
    * @returns {Promise<Array<{name: string, schema: string}>>}
    */
-  async listTables(params = {}) {
+  async listTables(params = {}, sessionContext) {
     throw new Error('listTables() must be implemented by adapter');
   }
 
@@ -50,9 +51,10 @@ export class BaseAdapter {
    * @param {Object} params - Query parameters
    * @param {string} params.schema - Schema name
    * @param {string} params.table - Table name
+   * @param {SessionContext} sessionContext - Bound session context (identity + tenant)
    * @returns {Promise<Array<{name: string, type: string, nullable: boolean, default: any, isPrimaryKey: boolean}>>}
    */
-  async describeTable(params) {
+  async describeTable(params, sessionContext) {
     throw new Error('describeTable() must be implemented by adapter');
   }
 

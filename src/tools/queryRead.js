@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { logger } from '../utils/logger.js';
+import { isValidSessionContext } from '../core/sessionContext.js';
 
 /**
  * Query Read Tool
@@ -38,10 +39,21 @@ export const queryReadInputSchema = z.object({
  * Tool handler
  * @param {Object} input - Validated input from Zod schema
  * @param {Object} adapter - Database adapter instance
+ * @param {SessionContext} sessionContext - Immutable session context (identity + tenant)
  * @returns {Promise<Object>} Query results with metadata
  */
-async function handler(input, adapter) {
+async function handler(input, adapter, sessionContext) {
   const startTime = Date.now();
+
+  // SECURITY: Defensive assertion - context MUST be bound
+  if (!sessionContext || !sessionContext.isBound) {
+    throw new Error('SECURITY: query_read called without bound session context');
+  }
+
+  // SECURITY: Verify session context is genuine
+  if (!isValidSessionContext(sessionContext)) {
+    throw new Error('SECURITY VIOLATION: Invalid session context instance');
+  }
 
   try {
     // Audit log: query execution initiated (no sensitive data)
@@ -56,12 +68,13 @@ async function handler(input, adapter) {
     );
 
     // Execute via adapter (orchestrates all security layers)
+    // SECURITY: Pass session context for tenant isolation and audit
     const result = await adapter.executeQuery({
       query: input.query,
       params: input.params,
       limit: input.limit,
       timeout: input.timeout,
-    });
+    }, sessionContext);
 
     // Audit log: successful execution
     logger.info(

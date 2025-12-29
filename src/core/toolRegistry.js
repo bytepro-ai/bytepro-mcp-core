@@ -2,6 +2,9 @@ import { z } from 'zod';
 import { logger, auditLog } from '../utils/logger.js';
 import { adapterRegistry } from '../adapters/adapterRegistry.js';
 import * as responseFormatter from './responseFormatter.js';
+import { isValidSessionContext } from './sessionContext.js';
+import { CapabilityAction, evaluateCapability } from '../security/capabilities.js';
+import { QuotaDenialReason } from '../security/quotas.js';
 
 // Import tools
 import { listTablesTool } from '../tools/listTables.js';
@@ -16,21 +19,40 @@ export class ToolRegistry {
   constructor() {
     this.tools = new Map();
     this.server = null;
+    // SECURITY: Session context injected at initialization (immutable)
+    this.sessionContext = null;
   }
 
   /**
    * Initialize the tool registry and register all tools
    * @param {Server} server - MCP server instance
+   * @param {SessionContext} sessionContext - Bound session context (immutable)
    */
-  async initialize(server) {
+  async initialize(server, sessionContext) {
     this.server = server;
+    
+    // SECURITY: Assert session context is bound before proceeding
+    if (!sessionContext || !sessionContext.isBound) {
+      throw new Error('ToolRegistry: Session context must be bound before initialization');
+    }
+
+    // SECURITY: Verify session context is genuine
+    if (!isValidSessionContext(sessionContext)) {
+      throw new Error('SECURITY VIOLATION: Invalid session context instance');
+    }
+    
+    this.sessionContext = sessionContext;
 
     // Register all available tools
     this.registerTool(listTablesTool);
     this.registerTool(describeTableTool);
     this.registerTool(queryReadTool);
 
-    logger.info({ tools: Array.from(this.tools.keys()) }, 'Tool registry initialized');
+    logger.info({
+      tools: Array.from(this.tools.keys()),
+      identity: this.sessionContext.identity,
+      tenant: this.sessionContext.tenant,
+    }, 'Tool registry initialized with session context');
   }
 
   /**
@@ -60,14 +82,44 @@ export class ToolRegistry {
 
   /**
    * List all registered tools in MCP format
+   * 
+   * BLOCK 2: Respects capabilities - only lists tools the session is authorized to invoke
+   * 
    * @returns {Array} List of tool definitions
    */
   listTools() {
-    return Array.from(this.tools.values()).map((tool) => ({
+    // Get all tool definitions
+    const allTools = Array.from(this.tools.values()).map((tool) => ({
       name: tool.name,
       description: tool.description,
       inputSchema: this.zodToJsonSchema(tool.inputSchema),
     }));
+
+    // BLOCK 2: Filter tools based on capabilities (if attached)
+    if (this.sessionContext && this.sessionContext.hasCapabilities) {
+      const capabilities = this.sessionContext.capabilities;
+      
+      // Only include tools that have explicit grants
+      const authorizedTools = allTools.filter((tool) => {
+        const authzResult = evaluateCapability(
+          capabilities,
+          CapabilityAction.TOOL_INVOKE,
+          tool.name
+        );
+        return authzResult.allowed;
+      });
+
+      logger.debug({
+        totalTools: allTools.length,
+        authorizedTools: authorizedTools.length,
+      }, 'Tool list filtered by capabilities');
+
+      return authorizedTools;
+    }
+
+    // If no capabilities attached (shouldn't happen in normal flow), return empty list (default deny)
+    logger.warn('listTools called without capabilities attached (default deny)');
+    return [];
   }
 
   /**
@@ -80,11 +132,128 @@ export class ToolRegistry {
     const startTime = Date.now();
 
     try {
-      // Get tool
+      // SECURITY: Defensive assertion - session MUST be bound for data-plane ops
+      if (!this.sessionContext || !this.sessionContext.isBound) {
+        throw new Error('SECURITY VIOLATION: Tool execution attempted without bound session context');
+      }
+
+      // SECURITY: Verify session context is genuine
+      if (!isValidSessionContext(this.sessionContext)) {
+        throw new Error('SECURITY VIOLATION: Invalid session context instance');
+      }
+
+      // SECURITY: Validate tool exists FIRST (before any authorization or audit state)
+      // This prevents invalid tool names from creating authorization decisions or audit logs
       const tool = this.tools.get(name);
 
       if (!tool) {
         throw new Error(`Tool "${name}" not found`);
+      }
+
+      // BLOCK 2: AUTHORIZATION CHECK (after tool validation)
+      // This is the primary enforcement point for capability-based authorization
+      const authzResult = evaluateCapability(
+        this.sessionContext.capabilities,
+        CapabilityAction.TOOL_INVOKE,
+        name,
+        {
+          identity: this.sessionContext.identity,
+          tenant: this.sessionContext.tenant,
+          sessionId: this.sessionContext.sessionId,
+        }
+      );
+
+      // Log authorization decision (audit)
+      auditLog({
+        action: 'authz',
+        tool: name,
+        identity: this.sessionContext.identity,
+        tenant: this.sessionContext.tenant,
+        decision: authzResult.allowed ? 'ALLOW' : 'DENY',
+        reason: authzResult.reason,
+        capSetId: this.sessionContext.capabilities?.capSetId,
+        duration: Date.now() - startTime,
+        outcome: authzResult.allowed ? 'success' : 'denied',
+      });
+
+      // INVARIANT: Fail-closed - if not authorized, do NOT proceed
+      if (!authzResult.allowed) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                responseFormatter.error({
+                  code: 'AUTHORIZATION_DENIED',
+                  message: 'Insufficient permissions to invoke this tool',
+                  details: { tool: name },
+                }),
+                null,
+                2
+              ),
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      // Authorization passed - proceed with tool execution
+
+      // BLOCK 3: QUOTA CHECK (after authorization, before validation/execution)
+      // This is the primary enforcement point for quota/rate limiting
+      let quotaSemaphoreKey = null;
+      
+      if (this.sessionContext.hasQuotaEngine) {
+        const quotaEngine = this.sessionContext.quotaEngine;
+        
+        const quotaResult = quotaEngine.checkAndReserve({
+          tenant: this.sessionContext.tenant,
+          identity: this.sessionContext.identity,
+          sessionId: this.sessionContext.sessionId,
+          capSetId: this.sessionContext.capabilities?.capSetId,
+          action: CapabilityAction.TOOL_INVOKE,
+          target: name,
+        });
+
+        // Log quota decision (audit)
+        auditLog({
+          action: 'quota',
+          tool: name,
+          identity: this.sessionContext.identity,
+          tenant: this.sessionContext.tenant,
+          decision: quotaResult.allowed ? 'ALLOW' : 'DENY',
+          reason: quotaResult.reason,
+          duration: Date.now() - startTime,
+          outcome: quotaResult.allowed ? 'success' : 'denied',
+        });
+
+        // INVARIANT: Fail-closed - if quota exceeded or error, do NOT proceed
+        if (!quotaResult.allowed) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  responseFormatter.error({
+                    code: 'RATE_LIMITED',
+                    message: 'Request denied by quota policy',
+                    details: { 
+                      tool: name,
+                      reason: quotaResult.reason,
+                    },
+                  }),
+                  null,
+                  2
+                ),
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        if (quotaResult.allowed) {
+          quotaSemaphoreKey = quotaResult.semaphoreKey;
+        }
       }
 
       // Validate input
@@ -96,6 +265,8 @@ export class ToolRegistry {
         auditLog({
           action: name,
           adapter: 'n/a',
+          identity: this.sessionContext.identity,
+          tenant: this.sessionContext.tenant,
           input: args,
           duration: Date.now() - startTime,
           outcome: 'error',
@@ -124,13 +295,24 @@ export class ToolRegistry {
       // Get adapter
       const adapter = adapterRegistry.getAdapter();
 
-      // Execute tool
-      const result = await tool.handler(validationResult.data, adapter);
+      // SECURITY: Inject session context into adapter execution
+      // Execute tool with bound context (identity + tenant)
+      let result;
+      try {
+        result = await tool.handler(validationResult.data, adapter, this.sessionContext);
+      } finally {
+        // BLOCK 3: Always release concurrency slot in finally block (prevent leaks)
+        if (this.sessionContext.hasQuotaEngine && quotaSemaphoreKey) {
+          this.sessionContext.quotaEngine.release(quotaSemaphoreKey);
+        }
+      }
 
-      // Log audit
+      // Log audit with identity and tenant
       auditLog({
         action: name,
         adapter: adapter.name,
+        identity: this.sessionContext.identity,
+        tenant: this.sessionContext.tenant,
         input: validationResult.data,
         duration: Date.now() - startTime,
         outcome: 'success',
@@ -154,10 +336,12 @@ export class ToolRegistry {
         ],
       };
     } catch (error) {
-      // Log audit
+      // Log audit with session context
       auditLog({
         action: name,
         adapter: adapterRegistry.activeAdapter?.name || 'unknown',
+        identity: this.sessionContext?.identity || 'unknown',
+        tenant: this.sessionContext?.tenant || 'unknown',
         input: args,
         duration: Date.now() - startTime,
         outcome: 'error',

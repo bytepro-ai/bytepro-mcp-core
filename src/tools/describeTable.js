@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isValidSessionContext } from '../core/sessionContext.js';
 
 /**
  * Describe Table Tool
@@ -12,10 +13,21 @@ export const describeTableInputSchema = z.object({
 });
 
 // Tool handler
-async function handler(input, adapter) {
+// SECURITY: sessionContext is injected by toolRegistry (immutable binding)
+async function handler(input, adapter, sessionContext) {
+  // SECURITY: Defensive assertion - context MUST be bound
+  if (!sessionContext || !sessionContext.isBound) {
+    throw new Error('SECURITY: describe_table called without bound session context');
+  }
+
+  // SECURITY: Verify session context is genuine
+  if (!isValidSessionContext(sessionContext)) {
+    throw new Error('SECURITY VIOLATION: Invalid session context instance');
+  }
+
   const { schema, table } = input;
 
-  const columns = await adapter.describeTable({ schema, table });
+  const columns = await adapter.describeTable({ schema, table }, sessionContext);
 
   return {
     schema,

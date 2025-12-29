@@ -6,6 +6,7 @@ import { logger } from '../utils/logger.js';
 import { validateQueryWithTables } from '../security/queryValidator.js';
 import { enforceQueryPermissions } from '../security/permissions.js';
 import { logQueryEvent, computeQueryFingerprint } from '../security/auditLogger.js';
+import { isValidSessionContext } from '../core/sessionContext.js';
 
 /**
  * PostgreSQL adapter implementation
@@ -71,10 +72,22 @@ export class PostgresAdapter extends BaseAdapter {
    * List all tables in allowed schemas
    * @param {Object} [params] - Query parameters
    * @param {string} [params.schema] - Optional schema filter
+   * @param {SessionContext} sessionContext - Bound session context (identity + tenant)
    * @returns {Promise<Array<{name: string, schema: string}>>}
    */
-  async listTables(params = {}) {
+  async listTables(params = {}, sessionContext) {
     const startTime = Date.now();
+
+    // SECURITY: Defensive assertion - session context MUST be bound
+    // Adapters MUST NOT execute without bound identity + tenant
+    if (!sessionContext || !sessionContext.isBound) {
+      throw new Error('SECURITY VIOLATION: Adapter called without bound session context');
+    }
+
+    // SECURITY: Verify session context is genuine
+    if (!isValidSessionContext(sessionContext)) {
+      throw new Error('SECURITY VIOLATION: Invalid session context instance');
+    }
 
     try {
       let { schema } = params;
@@ -139,10 +152,21 @@ export class PostgresAdapter extends BaseAdapter {
    * @param {Object} params - Query parameters
    * @param {string} params.schema - Schema name
    * @param {string} params.table - Table name
+   * @param {SessionContext} sessionContext - Bound session context (identity + tenant)
    * @returns {Promise<Array<{name: string, type: string, nullable: boolean, default: any, isPrimaryKey: boolean}>>}
    */
-  async describeTable(params) {
+  async describeTable(params, sessionContext) {
     const startTime = Date.now();
+
+    // SECURITY: Defensive assertion - session context MUST be bound
+    if (!sessionContext || !sessionContext.isBound) {
+      throw new Error('SECURITY VIOLATION: Adapter called without bound session context');
+    }
+
+    // SECURITY: Verify session context is genuine
+    if (!isValidSessionContext(sessionContext)) {
+      throw new Error('SECURITY VIOLATION: Invalid session context instance');
+    }
 
     try {
       const { schema, table } = params;
@@ -207,11 +231,23 @@ export class PostgresAdapter extends BaseAdapter {
    * @param {Array} [params.params] - Query parameters
    * @param {number} [params.limit] - Maximum rows to return (default: 100, max: 1000)
    * @param {number} [params.timeout] - Query timeout in milliseconds (default: 30000, max: 60000)
+   * @param {SessionContext} sessionContext - Bound session context (identity + tenant)
    * @returns {Promise<Object>} Query results with metadata
    */
-  async executeQuery(params) {
+  async executeQuery(params, sessionContext) {
     const startTime = Date.now();
     let validationPassed = false; // Track whether validation succeeded
+
+    // SECURITY: Defensive assertion - session context MUST be bound
+    // NO data-plane query execution without bound identity + tenant
+    if (!sessionContext || !sessionContext.isBound) {
+      throw new Error('SECURITY VIOLATION: Query execution attempted without bound session context');
+    }
+
+    // SECURITY: Verify session context is genuine
+    if (!isValidSessionContext(sessionContext)) {
+      throw new Error('SECURITY VIOLATION: Invalid session context instance');
+    }
 
     try {
       const { query, params: queryParams = [], limit = 100, timeout = 30000 } = params;

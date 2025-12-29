@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isValidSessionContext } from '../core/sessionContext.js';
 
 /**
  * List Tables Tool
@@ -11,8 +12,19 @@ export const listTablesInputSchema = z.object({
 });
 
 // Tool handler
-async function handler(input, adapter) {
-  const result = await adapter.listTables(input);
+// SECURITY: sessionContext is injected by toolRegistry (immutable binding)
+async function handler(input, adapter, sessionContext) {
+  // SECURITY: Defensive assertion - context MUST be bound
+  if (!sessionContext || !sessionContext.isBound) {
+    throw new Error('SECURITY: list_tables called without bound session context');
+  }
+
+  // SECURITY: Verify session context is genuine
+  if (!isValidSessionContext(sessionContext)) {
+    throw new Error('SECURITY VIOLATION: Invalid session context instance');
+  }
+
+  const result = await adapter.listTables(input, sessionContext);
 
   return {
     tables: result,

@@ -9,6 +9,9 @@ import { config } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import { adapterRegistry } from '../adapters/adapterRegistry.js';
 import { toolRegistry } from './toolRegistry.js';
+import { createSessionContextFromEnv } from './sessionContext.js';
+import { loadCapabilitiesFromEnv } from '../security/capabilities.js';
+import { loadQuotaEngineFromEnv } from '../security/quotas.js';
 
 /**
  * MCP Server Core
@@ -19,6 +22,8 @@ class MCPServer {
     this.server = null;
     this.transport = null;
     this.isRunning = false;
+    // SECURITY: Session context bound once at initialization (immutable)
+    this.sessionContext = null;
   }
 
   /**
@@ -27,6 +32,53 @@ class MCPServer {
   async initialize() {
     try {
       logger.info('Initializing MCP server...');
+
+      // SECURITY: Bind session context FIRST (fail-closed if missing)
+      // This MUST happen before any data-plane initialization
+      try {
+        this.sessionContext = createSessionContextFromEnv();
+        logger.info({
+          identity: this.sessionContext.identity,
+          tenant: this.sessionContext.tenant,
+          sessionId: this.sessionContext.sessionId,
+        }, 'Session context bound');
+      } catch (error) {
+        logger.fatal({ error: error.message }, 'FATAL: Session context binding failed (terminating)');
+        throw new Error(`Session binding failed: ${error.message}`);
+      }
+
+      // BLOCK 2: Attach capabilities AFTER binding, BEFORE tool initialization
+      try {
+        const capabilities = loadCapabilitiesFromEnv();
+        this.sessionContext.attachCapabilities(capabilities);
+        
+        logger.info({
+          sessionId: this.sessionContext.sessionId,
+          hasCapabilities: !!capabilities,
+          capSetId: capabilities?.capSetId,
+          grantCount: capabilities?.grants?.length || 0,
+        }, 'Capabilities attached to session');
+      } catch (error) {
+        logger.fatal({ error: error.message }, 'FATAL: Capability attachment failed (terminating)');
+        throw new Error(`Capability attachment failed: ${error.message}`);
+      }
+
+      // BLOCK 3: Attach quota engine AFTER capabilities, BEFORE tool initialization
+      try {
+        const quotaEngine = loadQuotaEngineFromEnv();
+        this.sessionContext.attachQuotaEngine(quotaEngine);
+        
+        logger.info({
+          sessionId: this.sessionContext.sessionId,
+          hasQuotaEngine: !!quotaEngine,
+        }, 'Quota engine attached to session');
+      } catch (error) {
+        logger.fatal({ error: error.message }, 'FATAL: Quota engine attachment failed (terminating)');
+        throw new Error(`Quota engine attachment failed: ${error.message}`);
+      }
+
+      // INVARIANT: At this point, sessionContext is immutably bound with capabilities and quotas
+      // All subsequent operations inherit this context
 
       // Initialize database adapter
       await adapterRegistry.initializeAdapter('postgres', config.pg);
@@ -48,13 +100,14 @@ class MCPServer {
       this.registerHandlers();
 
       // Initialize tool registry
-      await toolRegistry.initialize(this.server);
+      await toolRegistry.initialize(this.server, this.sessionContext);
 
       logger.info(
         {
           name: config.app.name,
           version: config.app.version,
           tools: toolRegistry.listTools().length,
+          session: this.sessionContext.toJSON(),
         },
         'MCP server initialized'
       );

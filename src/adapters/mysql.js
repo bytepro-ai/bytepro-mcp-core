@@ -5,6 +5,7 @@ import { logger } from '../utils/logger.js';
 import { validateQueryWithTables } from '../security/queryValidator.js';
 import { enforceQueryPermissions } from '../security/permissions.js';
 import { logQueryEvent, computeQueryFingerprint } from '../security/auditLogger.js';
+import { isValidSessionContext } from '../core/sessionContext.js';
 
 /**
  * MySQL/MariaDB adapter implementation
@@ -145,8 +146,19 @@ export class MySQLAdapter extends BaseAdapter {
    * @param {string} [params.schema] - Optional schema (database) filter
    * @returns {Promise<Array<{name: string, schema: string}>>}
    */
-  async listTables(params = {}) {
+  async listTables(params = {}, sessionContext) {
     const startTime = Date.now();
+
+    // SECURITY: Defensive assertion - session context MUST be bound
+    // Adapters MUST NOT execute without bound identity + tenant
+    if (!sessionContext || !sessionContext.isBound) {
+      throw new Error('SECURITY VIOLATION: Adapter called without bound session context');
+    }
+
+    // SECURITY: Verify session context is genuine
+    if (!isValidSessionContext(sessionContext)) {
+      throw new Error('SECURITY VIOLATION: Invalid session context instance');
+    }
 
     try {
       let { schema } = params;
@@ -218,8 +230,19 @@ export class MySQLAdapter extends BaseAdapter {
    * @param {string} params.table - Table name
    * @returns {Promise<Array<{name: string, type: string, nullable: boolean, default: any, isPrimaryKey: boolean}>>}
    */
-  async describeTable(params) {
+  async describeTable(params, sessionContext) {
     const startTime = Date.now();
+
+    // SECURITY: Defensive assertion - session context MUST be bound
+    // Adapters MUST NOT execute without bound identity + tenant
+    if (!sessionContext || !sessionContext.isBound) {
+      throw new Error('SECURITY VIOLATION: Adapter called without bound session context');
+    }
+
+    // SECURITY: Verify session context is genuine
+    if (!isValidSessionContext(sessionContext)) {
+      throw new Error('SECURITY VIOLATION: Invalid session context instance');
+    }
 
     try {
       const { schema, table } = params;
@@ -272,9 +295,20 @@ export class MySQLAdapter extends BaseAdapter {
    * @param {number} [params.timeout] - Query timeout in milliseconds (default: 30000, max: 60000)
    * @returns {Promise<Object>} Query results with metadata
    */
-  async executeQuery(params) {
+  async executeQuery(params, sessionContext) {
     const startTime = Date.now();
     let validationPassed = false; // Track whether validation succeeded
+
+    // SECURITY: Defensive assertion - session context MUST be bound
+    // Adapters MUST NOT execute without bound identity + tenant
+    if (!sessionContext || !sessionContext.isBound) {
+      throw new Error('SECURITY VIOLATION: Query execution attempted without bound session context');
+    }
+
+    // SECURITY: Verify session context is genuine
+    if (!isValidSessionContext(sessionContext)) {
+      throw new Error('SECURITY VIOLATION: Invalid session context instance');
+    }
 
     try {
       const {
