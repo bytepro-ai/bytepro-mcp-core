@@ -1,126 +1,191 @@
 # BytePro MCP Core (Community Edition)
 
-Core runtime for building secure MCP servers that connect PostgreSQL databases to AI systems.
+Security-first runtime for implementing, executing, and governing MCP tools.
 
-## Features
+BytePro MCP Core is a Node.js runtime for building secure MCP servers that expose existing systems (starting with PostgreSQL databases) to AI agents under strict security and governance controls.
 
-- 🔒 **Security-First**: Allowlist-based access control, parameterized queries, query guards
-- 🔍 **Database Introspection**: List tables and describe schemas
-- 📊 **PostgreSQL Support**: Full support with connection pooling
-- 📝 **Audit Logging**: Complete audit trail of all operations
-- 🚀 **MCP SDK Integration**: Built on official Model Context Protocol SDK
-- ⚡ **stdio Transport**: Easy integration with MCP Inspector and clients
+It combines tool execution with an embedded control plane that enforces authorization, isolation, rate limits, and auditability before any tool logic runs.
+
+This repository contains the Community Edition, focused on PostgreSQL introspection and read-only access.
+
+---
+
+## What this project is
+
+A runtime for MCP tools.
+
+Tools are registered with executable handlers.
+Tool logic runs inside BytePro only after all security checks pass.
+
+A security-first execution boundary.
+
+Allowlist-based access control.
+Query guards and read-only enforcement.
+Rate and concurrency limits.
+Full audit logging.
+
+A foundation for building production-appropriate MCP servers.
+
+Non-invasive to existing databases.
+No schema changes or workflow rewrites.
+Designed for legacy and regulated environments.
+
+---
+
+## What this project is not
+
+This library intentionally does not aim to:
+
+Be a general-purpose workflow engine or orchestration platform.
+Provide sandboxing for arbitrary untrusted code.
+Replace authentication, IAM, or identity systems.
+Enable unrestricted or write-capable database access.
+Abstract compliance or governance responsibility from operators.
+
+The scope is deliberately limited to safe, auditable MCP tool execution.
+
+---
+
+## Features (Community Edition)
+
+Security-first defaults.
+Read-only mode by default.
+Schema and table allowlists.
+Query pattern blocking (DROP, ALTER, etc.).
+
+Database introspection tools.
+List tables.
+Describe table schemas.
+
+PostgreSQL adapter.
+Connection pooling.
+Parameterized queries.
+Guarded execution.
+
+Audit logging.
+Complete audit trail of tool invocation decisions.
+
+MCP SDK integration.
+Built on the official Model Context Protocol SDK.
+
+stdio transport.
+Compatible with MCP Inspector and MCP clients.
+
+---
 
 ## Quick Start
 
-```bash
-# Install dependencies
-npm install
+npm install  
+cp .env.example .env  
+npm run dev  
 
-# Configure environment
-cp .env.example .env
-# Edit .env with your PostgreSQL credentials
+Edit the .env file with your PostgreSQL credentials.
 
-# Run the server
-npm run dev
-```
+---
 
 ## Configuration
 
 Required environment variables:
 
-```env
-PG_HOST=localhost
-PG_PORT=5432
-PG_USER=postgres
-PG_PASSWORD=your_password
-PG_DATABASE=your_database
+PG_HOST=localhost  
+PG_PORT=5432  
+PG_USER=postgres  
+PG_PASSWORD=your_password  
+PG_DATABASE=your_database  
 
-READ_ONLY=true
-ALLOWLIST_SCHEMAS=public
-LOG_LEVEL=info
-```
+READ_ONLY=true  
+ALLOWLIST_SCHEMAS=public  
+LOG_LEVEL=info  
 
-See [`.env.example`](.env.example) for all available options.
+See .env.example for the full list.
+
+---
 
 ## Available Tools
 
-- **`list_tables`** - List all tables in allowed schemas
-- **`describe_table`** - Get detailed schema information for a table
+list_tables  
+Lists tables in allowed schemas.
 
-## Security
+describe_table  
+Returns detailed schema information for a table.
 
-- ✅ Read-only mode by default
-- ✅ Schema and table allowlists
-- ✅ Query pattern blocking (DROP, ALTER, etc.)
-- ✅ Result size limits
-- ✅ Full audit logging
+All tools execute under the same control-plane enforcement.
 
-## Documentation
+---
 
-- [Getting Started Guide](docs/getting-started.md)
-- [Week 1 Implementation Plan](plan-week1Implementation.prompt.md)
-- [MCP Core Interface Design](docs/mcp-core-interface.md)
+## Architecture Overview
 
-## Architecture
-
-```
 src/
-├── core/           # MCP server and tool registry
-├── adapters/       # Database adapters
-├── security/       # Access control and query guards
-├── tools/          # MCP tool implementations
-├── config/         # Configuration and validation
-└── utils/          # Logger and utilities
-```
+core/           MCP runtime and tool registry
+adapters/       Database adapters (PostgreSQL)
+security/       Authorization, guards, and limits
+tools/          MCP tool implementations
+config/         Configuration and validation
+utils/          Logging and shared utilities
+
+---
 
 ## Testing
 
-Use [MCP Inspector](https://github.com/modelcontextprotocol/inspector) to test the server:
+Run the server:
 
-```bash
 npm run dev
-# Connect MCP Inspector to stdio transport
-```
+
+Connect using MCP Inspector via stdio transport.
+
+---
 
 ## Development Status
 
-**Week 1 Implementation: Days 1-5 Complete! ✅**
+Week 1 Complete.
 
-- [x] Project scaffolding and dependencies
-- [x] Configuration and logging with Zod validation
-- [x] PostgreSQL adapter with connection pooling
-- [x] Security primitives (allowlist, query guard)
-- [x] MCP server core with official SDK integration
-- [x] Tool implementations (list_tables, describe_table)
-- [x] Manual testing documentation
-- [ ] **Day 6**: End-to-end testing with real PostgreSQL database
+Project scaffolding and configuration.
+PostgreSQL adapter with pooling.
+Security primitives (allowlists, query guards).
+MCP runtime with official SDK.
+Introspection tools.
+Manual testing documentation.
 
-See [IMPLEMENTATION-SUMMARY.md](IMPLEMENTATION-SUMMARY.md) for complete details.
+See IMPLEMENTATION-SUMMARY.md for details.
+
+---
 
 ## Community vs Enterprise
 
-**Community Edition** (this package):
-- PostgreSQL adapter
-- Introspection tools
-- Basic security controls
-- stdio transport
+Community Edition:
 
-**Enterprise Edition** (separate):
-- Additional database adapters (MySQL, MSSQL, MongoDB)
-- Query execution tools
-- Advanced permissions
-- HTTP/WebSocket transports
+PostgreSQL adapter.
+Read-only introspection tools.
+Core security controls.
+stdio transport.
+
+Enterprise Edition:
+
+Additional database adapters (MySQL, SQL Server).
+Query execution tools.
+Advanced permission models.
+Additional transports (HTTP, WebSocket).
+
+---
+
+## Guiding Principle
+
+This project does not try to make agents smarter.
+It exists to make agent execution safer.
+
+---
 
 ## License
 
-Apache-2.0 - See [LICENSE](LICENSE) for details.
+Apache-2.0. See LICENSE.
+
+---
 
 ## Contributing
 
-This is an early-stage project. Contributions welcome!
+This is an early-stage project.
 
-1. Fork the repository
-2. Create a feature branch
-3. Follow existing code patterns
-4. Submit a pull request
+Fork the repository.
+Create a feature branch.
+Follow existing code patterns.
+Submit a pull request.

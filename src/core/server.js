@@ -12,6 +12,8 @@ import { toolRegistry } from './toolRegistry.js';
 import { createSessionContextFromEnv } from './sessionContext.js';
 import { loadCapabilitiesFromEnv } from '../security/capabilities.js';
 import { loadQuotaEngineFromEnv } from '../security/quotas.js';
+import * as responseFormatter from './responseFormatter.js';
+import { executeToolBoundary } from './executeToolBoundary.js';
 
 /**
  * MCP Server Core
@@ -134,17 +136,56 @@ class MCPServer {
 
       logger.info({ tool: name, arguments: args }, 'Tool call request');
 
-      try {
-        const result = await toolRegistry.executeTool(name, args || {});
-        return result;
-      } catch (error) {
-        logger.error({ tool: name, error: error.message }, 'Tool execution failed');
+      // Use internal boundary for execution
+      const result = await executeToolBoundary({
+        toolName: name,
+        input: args || {},
+        sessionContext: this.sessionContext,
+        toolRegistry: toolRegistry,
+        adapters: adapterRegistry,
+        mode: { readOnly: false }, // Default
+        meta: { 
+          requestId: request.params._meta?.requestId,
+          nowMs: Date.now() 
+        }
+      });
+
+      if (result.ok) {
+        const response = responseFormatter.success({
+          data: result.value,
+          meta: {
+            tool: name,
+            adapter: result.meta?.adapter,
+          },
+        });
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(response, null, 2),
+            },
+          ],
+        };
+      } else {
+        let code = result.error.code;
+        if (code === 'UNAUTHORIZED') code = 'AUTHORIZATION_DENIED';
+        
+        if (result.error.originalError) {
+             const errorResponse = responseFormatter.fromError(result.error.originalError);
+             return { content: [{ type: 'text', text: JSON.stringify(errorResponse, null, 2) }], isError: true };
+        }
+        
+        const errorResponse = responseFormatter.error({
+            code: code,
+            message: result.error.message,
+            details: result.error.details
+        });
 
         return {
           content: [
             {
               type: 'text',
-              text: `Error: ${error.message}`,
+              text: JSON.stringify(errorResponse, null, 2),
             },
           ],
           isError: true,
