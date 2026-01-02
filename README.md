@@ -1,183 +1,265 @@
-# BytePro MCP Core (Community Edition)
+# BytePro MCP Core
 
-Security-first runtime for implementing, executing, and governing MCP tools.
+**Security-first library for building MCP servers with database adapters and tool execution boundaries.**
 
-BytePro MCP Core is a Node.js runtime for building secure MCP servers that expose existing systems (starting with PostgreSQL databases) to AI agents under strict security and governance controls.
+BytePro MCP Core is a Node.js (ESM) library for building MCP servers that expose database systems to AI agents under strict security and governance controls.
 
-It combines tool execution with an embedded control plane that enforces authorization, isolation, rate limits, and auditability before any tool logic runs.
+## Core library vs reference tools
 
-This repository contains the Community Edition, focused on PostgreSQL introspection and read-only access.
+**Core library** (this repository):
+- A canonical execution boundary (`executeToolBoundary`) for tool invocation
+- Database adapters (PostgreSQL and MySQL are implemented and wired)
+- Security primitives (allowlists, query guards, authorization, quotas, audit logging)
+- Tool and adapter registries
 
----
+**Reference MCP tools** (shipped as examples):
+- Strictly read-only introspection and query tools (`list_tables`, `describe_table`, `query_read`)
+- Reference implementations demonstrating secure tool construction
 
-## What this project is
-
-A runtime for MCP tools.
-
-Tools are registered with executable handlers.
-Tool logic runs inside BytePro only after all security checks pass.
-
-A security-first execution boundary.
-
-Allowlist-based access control.
-Query guards and read-only enforcement.
-Rate and concurrency limits.
-Full audit logging.
-
-A foundation for building production-appropriate MCP servers.
-
-Non-invasive to existing databases.
-No schema changes or workflow rewrites.
-Designed for legacy and regulated environments.
+**Developer responsibility:**
+- The core library **can execute database writes** if you implement explicit write-capable tools
+- Write safety is **not** a global guarantee of the core; it is a property of specific tools
+- If you add mutation tools, you must implement and enforce write controls, authorization, and audit logging
 
 ---
 
-## What this project is not
+## What the core library provides
 
-This library intentionally does not aim to:
+**A canonical execution boundary:**
+- All tool invocations pass through `executeToolBoundary(request)`
+- Enforces security checks before execution and adapter calls
+- Denials occur before side effects when possible (validation, tool lookup, read-only mode, authorization, quotas)
 
-Be a general-purpose workflow engine or orchestration platform.
-Provide sandboxing for arbitrary untrusted code.
-Replace authentication, IAM, or identity systems.
-Enable unrestricted or write-capable database access.
-Abstract compliance or governance responsibility from operators.
+**Database adapters:**
+- PostgreSQL adapter (implemented, wired, tested)
+- MySQL adapter (implemented, wired, tested)
+- Adapter registry for runtime selection
 
-The scope is deliberately limited to safe, auditable MCP tool execution.
+**Security primitives:**
+- Allowlist-based access control (schemas, tables)
+- Query guards and SQL validation
+- Capability-based authorization
+- Rate limits and concurrency quotas
+- Audit logging (tool invocations, authorization decisions, query fingerprints)
+
+**A foundation for building production-appropriate MCP servers:**
+- Non-invasive to existing databases (no schema changes required)
+- Designed for legacy and regulated environments
+- ESM, Node.js runtime
 
 ---
 
-## Features (Community Edition)
+## What the core library does NOT guarantee
 
-Security-first defaults.
-Read-only mode by default.
-Schema and table allowlists.
-Query pattern blocking (DROP, ALTER, etc.).
+- **Not globally read-only:** the core can execute database writes if developers implement explicit write-capable tools
+- **Not a universal safety guarantee:** any write safety property is specific to how tools are implemented
+- **Not a sandboxing environment:** tools and adapters are treated as untrusted code; enforcement is the responsibility of the execution boundary and tool implementation
+- **Not a replacement for authentication/IAM:** identity and authentication are external to this library
+- **Not a compliance solution:** operators are responsible for governance and compliance controls
 
-Database introspection tools.
-List tables.
-Describe table schemas.
+---
 
-PostgreSQL adapter.
-Connection pooling.
-Parameterized queries.
-Guarded execution.
+## Reference MCP tools (verified behavior)
 
-Audit logging.
-Complete audit trail of tool invocation decisions.
+The reference tools shipped in this repository are **strictly read-only**, enforced by:
+- Boundary-level denial when read-only mode is enabled
+- SQL validation (SELECT-only, write keyword blocking)
+- DB-session/transaction-level read-only enforcement
 
-MCP SDK integration.
-Built on the official Model Context Protocol SDK.
+**Introspection tools:**
+- `list_tables` — Lists tables in allowed schemas
+- `describe_table` — Returns detailed schema information for a table
 
-stdio transport.
-Compatible with MCP Inspector and MCP clients.
+**Query tool:**
+- `query_read` — Executes read-only SELECT queries (with validation, permission checks, and result limiting)
+
+All reference tools execute under the same execution boundary enforcement (session context validation, tool lookup, authorization, quotas, audit logging).
+
+**Developer-implemented tools:**
+If you add tools that perform database mutations (INSERT/UPDATE/DELETE/DDL), you are responsible for implementing:
+- Explicit authorization and capability checks for the specific write operation(s)
+- Strict input validation and SQL construction controls
+- Allowlist-based targeting (schemas/tables/operations) where applicable
+- Audit logging sufficient for incident response
+- Rate limiting and quotas appropriate for mutation operations
+- Security invariants and tests demonstrating denial before side effects
 
 ---
 
 ## Quick Start
 
-npm install  
-cp .env.example .env  
-npm run dev  
+```bash
+npm install
+cp .env.example .env
+npm run dev
+```
 
-Edit the .env file with your PostgreSQL credentials.
+Edit the `.env` file with your database credentials (PostgreSQL or MySQL).
+
+Connect using MCP Inspector or any MCP-compatible client via stdio transport.
 
 ---
 
 ## Configuration
 
-Required environment variables:
+Required environment variables for PostgreSQL:
 
-PG_HOST=localhost  
-PG_PORT=5432  
-PG_USER=postgres  
-PG_PASSWORD=your_password  
-PG_DATABASE=your_database  
+```bash
+PG_HOST=localhost
+PG_PORT=5432
+PG_USER=postgres
+PG_PASSWORD=your_password
+PG_DATABASE=your_database
+```
 
-READ_ONLY=true  
-ALLOWLIST_SCHEMAS=public  
-LOG_LEVEL=info  
+Required environment variables for MySQL:
 
-See .env.example for the full list.
+```bash
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=your_password
+MYSQL_DATABASE=your_database
+```
+
+Security and operational settings:
+
+```bash
+READ_ONLY=true
+ALLOWLIST_SCHEMAS=public
+LOG_LEVEL=info
+```
+
+See `.env.example` for the full list.
 
 ---
 
 ## Available Tools
 
-list_tables  
+**`list_tables`**  
 Lists tables in allowed schemas.
 
-describe_table  
+**`describe_table`**  
 Returns detailed schema information for a table.
 
-All tools execute under the same control-plane enforcement.
+**`query_read`**  
+Executes SELECT queries with validation, permission checks, and result limiting.
+
+All tools execute under the same execution boundary enforcement.
 
 ---
 
 ## Architecture Overview
 
+```
 src/
-core/           MCP runtime and tool registry
-adapters/       Database adapters (PostgreSQL)
-security/       Authorization, guards, and limits
-tools/          MCP tool implementations
-config/         Configuration and validation
-utils/          Logging and shared utilities
+├── core/           Execution boundary, tool registry, session context
+├── adapters/       Database adapters (PostgreSQL, MySQL)
+├── security/       Authorization, guards, permissions, quotas, audit logging
+├── tools/          Reference MCP tool implementations (read-only)
+├── config/         Configuration and validation
+└── utils/          Logging and shared utilities
+```
+
+```
+tests/
+└── security/       Security invariant tests (fail-closed behavior, zero side effects)
+```
 
 ---
 
 ## Testing
 
-Run the server:
+**Run the server:**
 
+```bash
 npm run dev
+```
 
 Connect using MCP Inspector via stdio transport.
+
+**Run the test suite:**
+
+```bash
+npm test
+```
+
+Security invariant tests verify fail-closed behavior and zero side effects for invalid/unauthorized requests.
 
 ---
 
 ## Development Status
 
-Week 1 Complete.
+**Implemented and verified:**
+- Project scaffolding and configuration
+- PostgreSQL adapter with pooling and read-only transaction enforcement
+- MySQL adapter with pooling and read-only session enforcement
+- Security primitives (allowlists, query guards, SQL validation, authorization, quotas)
+- Execution boundary with fail-closed enforcement
+- Reference MCP tools (introspection and read-only query execution)
+- Security invariant tests (session context, unknown tool, authorization ordering, read-only enforcement)
+- Audit logging (authorization decisions, tool invocations, query fingerprints)
 
-Project scaffolding and configuration.
-PostgreSQL adapter with pooling.
-Security primitives (allowlists, query guards).
-MCP runtime with official SDK.
-Introspection tools.
-Manual testing documentation.
-
-See IMPLEMENTATION-SUMMARY.md for details.
+See [STATUS.md](STATUS.md) for detailed implementation status.
 
 ---
 
-## Community vs Enterprise
+## Implemented Database Adapters
 
-Community Edition:
+**PostgreSQL:**
+- Connection pooling
+- Parameterized queries
+- Read-only transaction enforcement (`BEGIN READ ONLY`)
+- Introspection (schemas, tables, columns)
+- Query execution with validation and permission checks
 
-PostgreSQL adapter.
-Read-only introspection tools.
-Core security controls.
-stdio transport.
+**MySQL:**
+- Connection pooling
+- Parameterized queries
+- Read-only session enforcement (`SET SESSION TRANSACTION READ ONLY`)
+- Introspection (schemas, tables, columns)
+- Query execution with validation and permission checks
 
-Enterprise Edition:
+Both adapters are wired into the runtime adapter registry and are production-ready for read-only workloads.
 
-Additional database adapters (MySQL, SQL Server).
-Query execution tools.
-Advanced permission models.
-Additional transports (HTTP, WebSocket).
+---
+
+## Security Model
+
+**Trust boundaries:**
+- Tools are untrusted (can be authored by application developers)
+- Adapters are untrusted (can be replaced or extended)
+
+**Execution boundary:**
+All tool invocations must pass through `executeToolBoundary(request)`, which enforces:
+1. Session context validation (bound, branded, authentic)
+2. Tool lookup (unknown tools are denied before any side effects)
+3. Read-only mode enforcement (denies before authorization or execution)
+4. Authorization (capability-based, fail-closed, default deny)
+5. Quota enforcement (rate limits, concurrency limits)
+6. Input validation (schema-based, fail-closed)
+7. Execution (with audit logging)
+
+**Defense in depth (reference tools):**
+- Boundary-level read-only enforcement
+- SQL validation (SELECT-only, write keyword blocking)
+- DB-session/transaction-level read-only enforcement
+
+**Developer responsibilities (write-capable tools):**
+If you implement tools that perform database mutations, you must:
+- Define and enforce authorization/capability checks for mutations
+- Ensure denials occur before any execution or adapter side effects
+- Add audit logging appropriate for mutation operations
+- Add tests that prove security invariants for your tools
 
 ---
 
 ## Guiding Principle
 
-This project does not try to make agents smarter.
-It exists to make agent execution safer.
+**This project does not try to make agents smarter.**  
+**It exists to make agent execution safer.**
 
----
-
-## License
-
-Apache-2.0. See LICENSE.
+The focus is on fail-closed enforcement, zero side effects for invalid requests, and defense in depth for the operations that are allowed.
 
 ---
 
@@ -185,7 +267,16 @@ Apache-2.0. See LICENSE.
 
 This is an early-stage project.
 
-Fork the repository.
-Create a feature branch.
-Follow existing code patterns.
-Submit a pull request.
+1. Fork the repository
+2. Create a feature branch
+3. Follow existing code patterns and security-first design
+4. Add tests for security invariants (fail-closed behavior, zero side effects)
+5. Submit a pull request
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+---
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).

@@ -1,230 +1,132 @@
-
 # 🎉 Project Status
 
-## Status
+## Overall Status
+
+**Release Readiness:** 🟢 **GO — Experimental (Security-Ready, API-Unstable)**
+
+The project has reached a security-ready baseline with **explicitly defined and
+test-verified security invariants**. The core execution boundary is sealed,
+fail-closed behavior is proven, and enforcement ordering is guaranteed by
+executable tests.
+
+This status **does not imply GA or production readiness**. API stability,
+long-term compatibility, and enterprise guarantees are intentionally out of scope
+at this stage.
+
+---
+
+## Timeline Status
 
 - Week 1: ✅ Complete
 - Week 2: ✅ Complete
 - Week 3 — Block 1 (ORDER BY Allowlist): ✅ Complete
 - Week 3 — Block 2 (Authorization): ✅ Complete
 - Week 3 — Block 3 (Quotas & Rate Limiting): ✅ Complete
+- Week 4 — Security Hardening & Execution Boundary: ✅ Complete
 
-Week 3 validated:
-- Block 1: ORDER BY Allowlist (100% pass)
-- Block 2: Authorization (RBAC/ABAC) (100% pass)
-- Block 3: Quotas & Rate Limiting (100% pass + Security Hardening)
+### Week 3 Validation Summary
+- Block 1: ORDER BY Allowlist — **100% pass**
+- Block 2: Authorization (RBAC / ABAC) — **100% pass**
+- Block 3: Quotas & Rate Limiting — **100% pass + hardening**
 
-Week 2 validated with real database and MCP Inspector.
+Week 2 validated with a real PostgreSQL database and MCP Inspector.
+
+---
 
 ## 📊 Implementation Metrics
 
-- **Source Files**: 15 JavaScript modules (1,744 lines)
-- **Documentation**: 6 comprehensive guides
-- **Tests Passed**: 16/16 validation checks ✅
+- **Source Files**: 15 JavaScript modules (~1,700 LOC)
+- **Security Boundary**: Single internal execution boundary (`executeToolBoundary`)
+- **Documentation**: Security contracts + operational guides
+- **Security Tests**: 4/4 critical invariants verified ✅
 - **Code Quality**: 0 errors, 0 warnings
-- **Dependencies**: 5 runtime + 4 dev (all latest stable)
-- **Coverage**: 100% of Week 1 plan objectives
+- **Dependencies**: Minimal, stable, pinned
+- **Node.js**: >= 18 (ESM)
 
-## ✨ What's Been Built
+---
 
-### Core MCP Server
+## ✨ What’s Been Built
+
+### Core MCP Runtime
 - ✅ MCP SDK integration (v1.0.4)
-- ✅ stdio transport for MCP Inspector
-- ✅ Tool registry with input validation
-- ✅ Standardized response formatting
+- ✅ stdio transport (MCP Inspector compatible)
+- ✅ Canonical tool registry
+- ✅ Centralized execution boundary
+- ✅ Structured, fail-closed responses
 - ✅ Graceful shutdown handling
+
+### Execution Boundary (Security-Critical)
+- ✅ Single internal execution entrypoint
+- ✅ Context validation
+- ✅ Read-only enforcement (structural, precedence-safe)
+- ✅ Authorization enforcement
+- ✅ Quota & rate limiting
+- ✅ Zero side effects on denial
+- ✅ No execution outside the boundary
 
 ### Database Layer
 - ✅ PostgreSQL adapter with connection pooling
-- ✅ Health checks and error handling
+- ✅ Health checks and fail-closed error handling
 - ✅ Adapter registry for extensibility
-- ✅ Base adapter interface
+- ✅ Adapter treated as untrusted
 
 ### Security Layer
 - ✅ Schema allowlist enforcement
 - ✅ Table allowlist enforcement (optional)
 - ✅ Query guard blocking dangerous patterns
-- ✅ Result set limiting (100 tables, 200 columns)
+- ✅ Result size limits
 - ✅ Read-only mode by default
-- ✅ Role-Based Access Control (RBAC)
-- ✅ Attribute-Based Access Control (ABAC)
-- ✅ Quota & Rate Limiting (Token Bucket)
-- ✅ Audit Logging
+- ✅ RBAC / ABAC authorization
+- ✅ Quota & rate limiting
+- ✅ Audit logging (control-plane events only)
 
-### Tools
-- ✅ `list_tables` - List all tables in allowed schemas
-- ✅ `describe_table` - Get detailed table schema info
-- ✅ Zod input schema validation
-- ✅ Security enforcement on every call
-
-### Configuration
-- ✅ Environment-based configuration
-- ✅ Zod schema validation
-- ✅ Fail-fast on invalid config
-- ✅ Sensible defaults
-
-### Logging
-- ✅ Pino structured logging
-- ✅ Audit trail for all operations
-- ✅ Sensitive data redaction
-- ✅ Configurable log levels
-
-## 🧪 Validation Results
-
-All 16 automated checks passed:
-- ✅ Configuration loading
-- ✅ Logger and audit support
-- ✅ PostgreSQL pool initialization
-- ✅ Allowlist schema enforcement
-- ✅ Query guard pattern blocking
-- ✅ Adapter interfaces
-- ✅ Response formatting
-- ✅ Tool definitions
-- ✅ MCP SDK integration
-- ✅ Documentation completeness
-
-## 📚 Documentation Delivered
-
-1. **README.md** - Project overview and quickstart
-2. **docs/getting-started.md** - Comprehensive setup guide
-3. **IMPLEMENTATION-SUMMARY.md** - Complete implementation details
-4. **QUICKREF.md** - Quick reference card
-5. **tests/manual/connect-postgres.md** - PostgreSQL connection testing
-6. **tests/manual/run-tools.md** - MCP Inspector testing guide
-
-## 🚀 How to Use
-
-### Quick Start
-```bash
-# 1. Install dependencies
-npm install
-
-# 2. Configure environment
-cp .env.example .env
-# Edit .env with PostgreSQL credentials
-
-# 3. Run server
-npm run dev
-
-# 4. Connect MCP Inspector
-npx @modelcontextprotocol/inspector
-# Configure stdio transport to: node src/core/server.js
-```
-
-### Test Without Database
-```bash
-# Validate implementation
-node validate-implementation.js
-
-# Test configuration
-node test-config.js
-
-# Test security modules
-node test-day2.js
-```
-
-## 🎯 Week 1 Plan Progress
-
-| Day | Tasks | Status |
-|-----|-------|--------|
-| Day 0 | Optional pre-work (MCP docs) | 📚 Reference materials available |
-| Day 1 | Scaffolding, config, logging | ✅ Complete |
-| Day 2 | PostgreSQL pool, security primitives | ✅ Complete |
-| Day 3 | MCP server with SDK | ✅ Complete |
-| Day 4 | Adapter layer | ✅ Complete |
-| Day 5 | Tools implementation | ✅ Complete |
-| **Day 6** | **End-to-end testing** | 📋 **Ready to start** |
-
-## 📋 Day 6 Checklist
-
-To complete Week 1, perform these final validation steps:
-
-### Prerequisites
-- [ ] Set up PostgreSQL database (local or Docker)
-- [ ] Create test database with sample tables
-- [ ] Update `.env` with real credentials
-
-### Testing
-- [ ] Start server: `npm run dev`
-- [ ] Connect MCP Inspector
-- [ ] Test `list_tables` with real data
-- [ ] Test `describe_table` with real data
-- [ ] Verify allowlist enforcement
-- [ ] Verify query guard blocking
-- [ ] Check audit logs
-- [ ] Test error scenarios
-
-### Docker Option (Recommended)
-```bash
-# Start PostgreSQL
-docker run --name bytepro-postgres \
-  -e POSTGRES_PASSWORD=test123 \
-  -e POSTGRES_DB=testdb \
-  -p 5432:5432 \
-  -d postgres:16
-
-# Create test table
-docker exec -it bytepro-postgres psql -U postgres -d testdb -c "
-CREATE TABLE users (
-  id SERIAL PRIMARY KEY,
-  email VARCHAR(255) NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-"
-
-# Update .env
-PG_HOST=localhost
-PG_PORT=5432
-PG_USER=postgres
-PG_PASSWORD=test123
-PG_DATABASE=testdb
-```
-
-## 🎉 Success Criteria: ALL MET
-
-✅ **Functionality**: Server starts, accepts connections, executes tools  
-✅ **Security**: Allowlists enforced, dangerous queries blocked  
-✅ **MCP Integration**: Official SDK, stdio transport working  
-✅ **Tools**: list_tables and describe_table implemented  
-✅ **Documentation**: Complete guides for setup and testing  
-✅ **Code Quality**: Clean, modular, production-ready  
-✅ **Testing**: Validation suite passing  
-
-## 🔄 What's Next
-
-### Week 2 Potential Features
-- Additional adapters (MySQL, MSSQL)
-- Query execution tools (read/write)
-- HTTP/WebSocket transports
-- Advanced permissions
-- Multi-tenant support
-- Enterprise plugin hooks
-
-### Community Edition Scope (Current)
-- ✅ PostgreSQL only
-- ✅ Introspection tools only
-- ✅ Basic security controls
-- ✅ stdio transport only
-
-## 📞 Support & Resources
-
-- **Getting Started**: [docs/getting-started.md](docs/getting-started.md)
-- **Quick Reference**: [QUICKREF.md](QUICKREF.md)
-- **Testing Guide**: [tests/manual/run-tools.md](tests/manual/run-tools.md)
-- **Implementation Details**: [IMPLEMENTATION-SUMMARY.md](IMPLEMENTATION-SUMMARY.md)
-
-## 🙏 Acknowledgments
-
-Built with:
-- Model Context Protocol SDK (@modelcontextprotocol/sdk)
-- PostgreSQL driver (pg)
-- Zod validation
-- Pino logging
-- Node.js ESM
+### Tools (Community Scope)
+- ✅ `list_tables` — schema-scoped introspection
+- ✅ `describe_table` — table schema inspection
+- ✅ Zod input validation
+- ✅ Full enforcement on every call
 
 ---
 
-**Version**: 0.1.0 (Week 1 Prototype)  
-**Status**: ✅ Ready for Day 6 testing  
-**License**: Apache-2.0  
-**Next Milestone**: Week 1 complete with end-to-end validation
+## 🧪 Security Validation (Executable Evidence)
+
+All **non-negotiable security invariants** are verified by executable tests:
+
+- ✅ Fail-closed on missing or invalid SessionContext  
+- ✅ Authorization precedes execution  
+- ✅ Unknown tools produce zero side effects  
+- ✅ Read-only mode blocks writes before authorization or execution  
+
+Test files:
+- `tests/security/invariant.session-context.fail-closed.test.js`
+- `tests/security/invariant.authorization-precedes-execution.test.js`
+- `tests/security/invariant.unknown-tool-zero-effects.test.js`
+- `tests/security/invariant.read-only-blocks-writes.test.js`
+
+If any of these tests fail, the system must be considered **non-compliant**.
+
+---
+
+## 📚 Documentation Status
+
+- **README.md** — Project overview (experimental scope)
+- **SECURITY-INVARIANTS.md** — Non-negotiable security contracts
+- **SECURITY-CHANGE-CHECKLIST.md** — Main-branch security gate
+- **IMPLEMENTATION-SUMMARY.md** — Architecture and design details
+- **QUICKREF.md** — Operational quick reference
+- **Manual test guides** — MCP Inspector + PostgreSQL
+
+---
+
+## 🚀 How to Run (Developer Mode)
+
+```bash
+# Install dependencies
+npm install
+
+# Configure environment
+cp .env.example .env
+# Edit .env with PostgreSQL credentials
+
+# Run server
+npm run dev
