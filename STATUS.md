@@ -89,6 +89,69 @@ See [`SECURITY-INVARIANTS.md`](SECURITY-INVARIANTS.md) for the complete security
 
 ---
 
+## Dependency Security Audit (npm audit)
+
+The project has been reviewed using `npm audit` for direct and transitive dependencies.
+
+### Summary
+
+- `npm audit` reports **high-severity advisories**
+- Findings are limited to **transitive dependencies**
+- No issue is exploitable under the current execution and threat model
+- Risks are **explicitly documented and accepted**
+
+---
+
+### Finding 1 — `@modelcontextprotocol/sdk`
+
+- **Advisory**: GHSA-8r9q-7v3j-jr4g (ReDoS)
+- **Severity**: High
+- **Fix Available**: No upstream fix available
+- **Dependency Type**: Direct dependency
+
+**Assessment**:
+- The affected code paths relate to request parsing behavior.
+- BytePro MCP Core operates exclusively over **local stdio transport**.
+- There is **no HTTP server, no untrusted network input**, and no exposure to external request bodies.
+
+**Decision**:
+- The vulnerability is **not exploitable** under the current threat model.
+- Risk is **accepted** and will be **monitored for upstream patches**.
+
+---
+
+### Finding 2 — `qs` (transitive)
+
+- **Advisory**: GHSA-6rw7-vpxm-498p
+- **Severity**: High
+- **Fix Available**: Yes (upstream)
+- **Dependency Path**:
+  - `@modelcontextprotocol/sdk → express → body-parser → qs`
+
+**Assessment**:
+- `qs` is only used in HTTP request parsing contexts.
+- BytePro MCP Core does **not expose an HTTP server**.
+- No execution path parses untrusted HTTP request bodies.
+
+**Decision**:
+- The vulnerability is **not exploitable** in the current architecture.
+- `npm audit fix` is **intentionally not applied** to avoid unreviewed dependency changes.
+- Risk is **accepted and documented**.
+
+---
+
+### Audit Policy
+
+- `npm audit fix` is **not run automatically**.
+- Dependency changes require:
+  - explicit review
+  - security invariant tests passing
+  - baseline re-validation if behavior changes
+
+This project favors **security determinism over automatic patching**.
+
+---
+
 ## Validation
 
 **Run security tests**:

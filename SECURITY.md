@@ -153,3 +153,22 @@ For security-related questions or concerns:
 **Last Updated**: January 2026
 
 **Note**: This security policy reflects the current experimental state of the project. Terms may change as the project matures.
+
+## Known Dependency Risks
+
+- `@modelcontextprotocol/sdk`  
+  - Advisory: GHSA-8r9q-7v3j-jr4g (ReDoS)
+  - No fix available upstream
+  - Not exploitable in the current threat model:
+    - Local stdio transport
+    - No untrusted network input
+    - No HTTP request parsing in runtime path
+  - Risk accepted and monitored for upstream patches
+
+- `qs` (transitive dependency via `@modelcontextprotocol/sdk → express → body-parser`)
+  - Advisory: GHSA-6rw7-vpxm-498p
+  - Fix available upstream
+  - Not exploitable in current deployment model:
+    - No HTTP server exposed
+    - No request body parsing used
+  - Risk accepted and monitored
