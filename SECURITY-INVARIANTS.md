@@ -11,7 +11,7 @@ These invariants must remain valid across:
 - Feature evolution
 - Dependency upgrades
 
-If any invariant cannot be upheld, the change **must not ship** without an explicit, documented security exception and review.
+If any invariant cannot be upheld, the change **must not be committed** without an explicit, documented security exception and verification.
 
 ---
 
@@ -181,11 +181,13 @@ If execution fails mid-flight, quota integrity must be preserved (no leaked rese
 
 The following security invariants are **explicitly verified by executable tests**. These tests assert observable behavior, including denial outcomes and the absence of side effects.
 
-The test suite **must pass in CI** for any change affecting:
+The test suite **must pass locally** (via `npm test`) for any change affecting:
 - Execution boundaries
 - Authorization
 - Quotas
 - Adapters
+
+**Jest security tests are the single source of truth** for enforceable security behavior. Documentation describes intent, but **does not override executable evidence**.
 
 ### Test-Verified Invariants
 
@@ -308,7 +310,7 @@ If you implement tools that perform database mutations (INSERT/UPDATE/DELETE/DDL
 
 ## Changes Requiring Security Review
 
-The following changes **must not be merged without explicit security review**:
+The following changes **require strict adherence to the [Security Change Checklist](SECURITY-CHANGE-CHECKLIST.md)** (including local invariant verification) before committing to `main`:
 
 - Authorization or policy logic
 - Tenant/scope attribution
@@ -320,13 +322,13 @@ The following changes **must not be merged without explicit security review**:
 - Any change that could introduce side effects before authorization
 - Modifications to `executeToolBoundary` control flow or check ordering
 
-Security review must verify that **no new path enables**:
+Pre-commit verification must confirm that **no new path enables**:
 - Unauthorized execution
 - Quota bypass
 - Cross-tenant influence
 - Silent allow
 
-See [`SECURITY-CHANGE-CHECKLIST.md`](SECURITY-CHANGE-CHECKLIST.md) for the review process.
+See [`SECURITY-CHANGE-CHECKLIST.md`](SECURITY-CHANGE-CHECKLIST.md) for the verification process.
 
 ---
 
