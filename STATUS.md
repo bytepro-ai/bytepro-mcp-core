@@ -1,13 +1,18 @@
-
 # Project Status
 
 ## Current State
 
-**Status**: Experimental — Security baseline frozen (Week 1–4)
+**Status**: Experimental — security baseline frozen (Week 1–4)
 
-**Security Posture**: Fail-closed enforcement verified by executable tests
+**Authority model**:
+- **Jest security tests are the single source of truth** for enforceable security behavior.
+- Documentation describes intent and constraints, but **does not override executable evidence**.
 
-**Operational Readiness**: Requires operator review for production deployment
+**Workflow reality**:
+- Development occurs **directly on `main`**.
+- No PR-based workflow is assumed.
+- No CI pipelines are assumed.
+- **Local `npm test` is the only verification gate** before changes land on `main`.
 
 ---
 
@@ -31,7 +36,7 @@
   - Allowlist-based access control (schemas, tables)
   - Query guards and SQL validation
   - Capability-based authorization ([`src/security/capabilities.js`](src/security/capabilities.js))
-  - Quota engine with token bucket algorithm ([`src/security/quotas.js`](src/security/quotas.js))
+  - Quota engine ([`src/security/quotas.js`](src/security/quotas.js))
   - Audit logging (tool invocations, authorization decisions, query fingerprints)
 
 ### Reference Tools (Read-Only)
@@ -48,15 +53,15 @@ All reference tools enforce read-only constraints via boundary-level checks, SQL
 
 **Write safety is NOT a global guarantee.** Write safety is a property of specific tool implementations.
 
-See [`examples/mysql-write-controlled/`](examples/mysql-write-controlled/) for a reference implementation with defense-in-depth controls.
+See [`examples/mysql-write-controlled/`](examples/mysql-write-controlled/) for a reference implementation with defense-in-depth controls and explicit operator responsibility.
 
 ---
 
 ## Security Baseline (Frozen)
 
-The security baseline is defined in [`BASELINE-WEEK1-4.md`](BASELINE-WEEK1-4.md) and verified by tests in [`tests/security/`](tests/security/).
+The Week 1–4 frozen baseline is defined in [`BASELINE-WEEK1-4.md`](BASELINE-WEEK1-4.md) and verified by Jest tests in [`tests/security/`](tests/security/).
 
-**Frozen Invariants (Test-Verified)**:
+**Frozen invariants (test-verified)**:
 
 1. **Fail-Closed on Missing/Invalid SessionContext**  
    Test: [`tests/security/invariant.session-context.fail-closed.test.js`](tests/security/invariant.session-context.fail-closed.test.js)
@@ -73,19 +78,10 @@ The security baseline is defined in [`BASELINE-WEEK1-4.md`](BASELINE-WEEK1-4.md)
 5. **Write Tool Controlled Execution**  
    Test: [`tests/security/invariant.write-tool-controlled.test.js`](tests/security/invariant.write-tool-controlled.test.js)
 
-**All baseline tests must pass** for the system to be considered compliant with its security contract.
+**Compliance rule**:
+- If any frozen invariant test fails, the system must be considered **non-compliant with its security contract**, regardless of documentation or intent.
 
-See [`SECURITY-INVARIANTS.md`](SECURITY-INVARIANTS.md) for the complete security model.
-
----
-
-## Implementation Metrics
-
-- **Core Modules**: 15+ JavaScript files (ESM)
-- **Security Tests**: 5 frozen invariants (100% passing)
-- **Database Adapters**: 2 (PostgreSQL, MySQL)
-- **Reference Tools**: 3 (read-only introspection and query execution)
-- **Dependencies**: Minimal (MCP SDK, pg, mysql2, zod, pino)
+See [`SECURITY-INVARIANTS.md`](SECURITY-INVARIANTS.md) for the full security contract and threat model.
 
 ---
 
@@ -95,12 +91,9 @@ The project has been reviewed using `npm audit` for direct and transitive depend
 
 ### Summary
 
-- `npm audit` reports **high-severity advisories**
-- Findings are limited to **transitive dependencies**
-- No issue is exploitable under the current execution and threat model
-- Risks are **explicitly documented and accepted**
-
----
+- `npm audit` reports high-severity advisories in transitive dependencies
+- Findings are assessed against the actual threat model (local stdio transport; no HTTP server)
+- Risks are explicitly documented and accepted when not exploitable under current architecture
 
 ### Finding 1 — `@modelcontextprotocol/sdk`
 
@@ -110,15 +103,13 @@ The project has been reviewed using `npm audit` for direct and transitive depend
 - **Dependency Type**: Direct dependency
 
 **Assessment**:
-- The affected code paths relate to request parsing behavior.
+- Affected paths relate to request parsing behavior.
 - BytePro MCP Core operates exclusively over **local stdio transport**.
 - There is **no HTTP server, no untrusted network input**, and no exposure to external request bodies.
 
 **Decision**:
-- The vulnerability is **not exploitable** under the current threat model.
-- Risk is **accepted** and will be **monitored for upstream patches**.
-
----
+- Not exploitable under the current threat model.
+- Risk accepted and monitored for upstream patches.
 
 ### Finding 2 — `qs` (transitive)
 
@@ -129,38 +120,32 @@ The project has been reviewed using `npm audit` for direct and transitive depend
   - `@modelcontextprotocol/sdk → express → body-parser → qs`
 
 **Assessment**:
-- `qs` is only used in HTTP request parsing contexts.
+- `qs` is used in HTTP request parsing contexts.
 - BytePro MCP Core does **not expose an HTTP server**.
 - No execution path parses untrusted HTTP request bodies.
 
 **Decision**:
-- The vulnerability is **not exploitable** in the current architecture.
-- `npm audit fix` is **intentionally not applied** to avoid unreviewed dependency changes.
-- Risk is **accepted and documented**.
-
----
+- Not exploitable in the current architecture.
+- `npm audit fix` is intentionally not applied to avoid unreviewed dependency changes.
+- Risk is accepted and documented.
 
 ### Audit Policy
 
-- `npm audit fix` is **not run automatically**.
-- Dependency changes require:
-  - explicit review
-  - security invariant tests passing
-  - baseline re-validation if behavior changes
-
-This project favors **security determinism over automatic patching**.
+- `npm audit fix` is not run automatically.
+- Dependency changes require explicit review and **local** security invariant tests passing (`npm test`).
+- This project favors determinism and test-verified behavior over automatic patching.
 
 ---
 
-## Validation
+## Validation (Local, Enforceable)
 
-**Run security tests**:
+**Run security tests (required gate before committing to `main`)**:
 
 ```bash
 npm test
 ```
 
-**Run server**:
+**Run server (for local exploration only; not a security gate)**:
 
 ```bash
 npm run dev
@@ -168,15 +153,15 @@ npm run dev
 
 Connect via MCP Inspector using stdio transport.
 
-**Verify baseline**:
-
-All tests in [`tests/security/`](tests/security/) must pass. Baseline is invalidated if any test fails.
+**Baseline verification rule**:
+- The enforceable baseline is the Jest security test suite in [`tests/security/`](tests/security/).
+- Manual guides under [`tests/manual/`](tests/manual/) may assist operator exploration, but are **not** an authority source for security correctness.
 
 ---
 
 ## Explicit Non-Goals
 
-The following are **intentionally out of scope**:
+The following are intentionally out of scope:
 
 - **Global read-only system**: Write-capable tools can be implemented
 - **Tool sandboxing**: Tools execute in the same process
@@ -194,13 +179,13 @@ See [`SECURITY-INVARIANTS.md`](SECURITY-INVARIANTS.md) and [`README.md`](README.
 
 1. Review [`SECURITY-INVARIANTS.md`](SECURITY-INVARIANTS.md)
 2. Review [`BASELINE-WEEK1-4.md`](BASELINE-WEEK1-4.md)
-3. Verify all security tests pass (`npm test`)
+3. Verify all security tests pass locally (`npm test`)
 4. Configure database credentials with least-privilege access
 5. Implement monitoring and audit log retention
 6. Define incident response procedures
 7. If implementing write-capable tools, follow [`examples/mysql-write-controlled/README.md`](examples/mysql-write-controlled/README.md)
 
-**Operator Responsibilities**:
+**Operator responsibilities**:
 
 - Credential isolation and rotation
 - Authorization policy definition
@@ -219,24 +204,28 @@ See [`SECURITY-INVARIANTS.md`](SECURITY-INVARIANTS.md) and [`README.md`](README.
 - [`BASELINE-WEEK1-4.md`](BASELINE-WEEK1-4.md) — Frozen security baseline
 - [`SECURITY.md`](SECURITY.md) — Vulnerability reporting and disclosure policy
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — Contribution guidelines and security expectations
-- [`SECURITY-CHANGE-CHECKLIST.md`](SECURITY-CHANGE-CHECKLIST.md) — Security review checklist
+- [`SECURITY-CHANGE-CHECKLIST.md`](SECURITY-CHANGE-CHECKLIST.md) — Local security change gate for direct-to-main development
 
 ### Examples
 
 - `examples/postgres-introspection/` — Read-only PostgreSQL introspection
 - [`examples/mysql-write-controlled/`](examples/mysql-write-controlled/) — Write-enabled tool with defense-in-depth
 
-### Manual Testing
+### Manual Testing (Non-Authoritative)
 
-- [`tests/manual/week-02-query_read.md`](tests/manual/week-02-query_read.md) — Query tool testing guide
+- [`tests/manual/run-tools.md`](tests/manual/run-tools.md) — Running tools via Inspector or stdio
+- [`tests/manual/week-02-query_read.md`](tests/manual/week-02-query_read.md) — `query_read` guided manual checks
+- [`tests/manual/week-03-order_by.md`](tests/manual/week-03-order_by.md) — ORDER BY allowlist manual cases
+
+Manual documents may help reproduce behaviors, but **do not define correctness**. Correctness is defined by **local Jest security tests**.
 
 ---
 
 ## Support
 
-**Security vulnerabilities**: Report via GitHub Security Advisories or contact maintainers privately
+**Security vulnerabilities**: Report via GitHub Security Advisories or contact maintainers privately.
 
-**General questions**: Open a public GitHub issue (without vulnerability details)
+**General questions**: Open a public GitHub issue (without vulnerability details).
 
 ---
 
@@ -248,4 +237,4 @@ Apache-2.0. See [`LICENSE`](LICENSE).
 
 **Last Updated**: January 2026  
 **Baseline Status**: Frozen (Week 1–4)  
-**Test Suite Status**: All security invariant tests passing
+**Authority**: Local Jest security tests (`npm test`)
