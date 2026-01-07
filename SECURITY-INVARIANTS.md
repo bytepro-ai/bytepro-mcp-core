@@ -1,200 +1,250 @@
-# SECURITY-INVARIANTS.md
+# Security Invariants
 
-This document defines the **non-negotiable security contracts** for BytePro MCP Core.  
-These invariants are **behavioral guarantees**, not intentions, and are validated by
-explicit security tests. If any invariant is violated in production behavior,
-the system must be considered **insecure**.
+This document defines the **non-negotiable security contracts** for BytePro MCP Core.
+
+These invariants are **behavioral guarantees**, not intentions. They are validated by explicit security tests. If any invariant is violated in production behavior, the system must be considered **insecure**.
 
 These invariants must remain valid across:
-- refactors
-- adapter changes
-- performance optimizations
-- feature evolution
-- dependency upgrades
+- Refactors
+- Adapter changes
+- Performance optimizations
+- Feature evolution
+- Dependency upgrades
 
-If any invariant cannot be upheld, the change **must not ship** without an explicit,
-documented security exception and review.
+If any invariant cannot be upheld, the change **must not ship** without an explicit, documented security exception and review.
 
 ---
 
-## Threat model (baseline assumption)
+## Threat Model
 
 BytePro MCP Core operates under a **hostile-environment assumption**:
 
-- Callers are untrusted (including compromised clients).
-- Tools are untrusted (buggy, malicious, or externally supplied).
-- Adapters and dependencies are untrusted.
-- Configuration may be missing, partial, or incorrect.
-- Partial outages and unexpected failures are normal.
-- **Fail-closed behavior is always preferred over availability.**
+- **Callers are untrusted** (including compromised clients)
+- **Tools are untrusted** (buggy, malicious, or externally supplied)
+- **Adapters are untrusted** (can fail, timeout, or behave incorrectly)
+- **Configuration may be missing, partial, or incorrect**
+- **Partial outages and unexpected failures are normal**
+- **Fail-closed behavior is always preferred over availability**
 
 ---
 
-## 1) What a security invariant means
+## What a Security Invariant Means
 
 A security invariant is a property that **must hold for all executions**, including:
 
-- invalid inputs
-- missing or malformed context
-- adapter failures or timeouts
-- misconfiguration
-- malicious tool logic
-- concurrency and retry behavior
-- version skew between components
+- Invalid inputs
+- Missing or malformed context
+- Adapter failures or timeouts
+- Misconfiguration
+- Malicious tool logic
+- Concurrency and retry behavior
+- Version skew between components
 
-Invariants are evaluated **only by observable behavior**.  
-If the behavior can occur in production, it is in scope.
-
----
-
-## 2) Core invariants (must ALWAYS hold)
-
-### A. Fail-closed by default
-
-- Any uncertainty in authorization, tenant attribution, quotas, or policy evaluation
-  **must result in denial**.
-- Security-relevant failures must never degrade into “best-effort allow”.
+Invariants are evaluated **only by observable behavior**. If the behavior can occur in production, it is in scope.
 
 ---
 
-### B. Explicit trust boundaries
+## Core Invariants (MUST ALWAYS HOLD)
 
-- All caller-supplied data (identity, tenant, capabilities, inputs) is untrusted.
-- All tool execution is untrusted computation.
-- The system must never assume tool correctness or safety.
+### 1. Fail-Closed by Default
 
----
+Any uncertainty in authorization, tenant attribution, quotas, or policy evaluation **must result in denial**.
 
-### C. Tenant and scope isolation
+Security-relevant failures must never degrade into "best-effort allow".
 
-- Every request is evaluated strictly within its declared tenant and scope.
-- Isolation must be enforced consistently across adapters and deployments.
-- Cross-tenant influence (state, quota, or execution) is forbidden.
+### 2. Explicit Trust Boundaries
 
----
+- All caller-supplied data (identity, tenant, capabilities, inputs) is untrusted
+- All tool execution is untrusted computation
+- The system must never assume tool correctness or safety
 
-### D. Deterministic, policy-driven decisions
+### 3. Tenant and Scope Isolation
 
-- Authorization outcomes must be derived from explicit policy and validated context.
-- No security decision may rely on:
-  - implicit defaults
-  - missing fields
-  - permissive fallbacks
-  - ambiguous parsing
+- Every request is evaluated strictly within its declared tenant and scope
+- Isolation must be enforced consistently across adapters and deployments
+- Cross-tenant influence (state, quota, or execution) is forbidden
 
----
+### 4. Deterministic, Policy-Driven Decisions
 
-### E. Least privilege (control-plane enforcement)
+Authorization outcomes must be derived from explicit policy and validated context.
 
-- Only the minimal access required for an authorized tool invocation is permitted.
-- Missing, empty, or wildcard-like fields must never expand permissions.
+No security decision may rely on:
+- Implicit defaults
+- Missing fields
+- Permissive fallbacks
+- Ambiguous parsing
 
----
+### 5. Least Privilege
 
-### F. Safe error handling
+- Only the minimal access required for an authorized tool invocation is permitted
+- Missing, empty, or wildcard-like fields must never expand permissions
 
-- Errors must not leak sensitive data (cross-tenant info, policy internals, secrets).
-- Error paths must not create side effects that violate isolation or quotas.
+### 6. Safe Error Handling
 
----
+- Errors must not leak sensitive data (cross-tenant info, policy internals, secrets)
+- Error paths must not create side effects that violate isolation or quotas
 
-### G. Resource governance integrity
+### 7. Resource Governance Integrity
 
-- Quota, rate, and concurrency enforcement must hold under:
-  - concurrency
-  - retries
-  - partial failures
-- Reservation and release semantics must not leak capacity.
+Quota, rate, and concurrency enforcement must hold under:
+- Concurrency
+- Retries
+- Partial failures
 
----
+Reservation and release semantics must not leak capacity.
 
-### H. Auditability (control-plane events)
+### 8. Auditability
 
-- Control-plane decisions (allow/deny) must be representable as audit events.
-- **Audit logging must not weaken fail-closed behavior**.
-- Audit events are permitted side effects **only after enforcement decisions**.
+- Control-plane decisions (allow/deny) must be representable as audit events
+- **Audit logging must not weaken fail-closed behavior**
+- Audit events are permitted side effects **only after enforcement decisions**
 
 ---
 
-## 3) Hard prohibitions (must NEVER occur)
+## Hard Prohibitions (MUST NEVER OCCUR)
 
 These are absolute constraints. If any can occur, the system is insecure.
 
----
+### A. Unauthorized Execution
 
-### A. Unauthorized execution
+A tool must never execute if authorization is missing, invalid, indeterminate, or denied.
 
-- A tool must never execute if authorization is missing, invalid, indeterminate, or denied.
+### B. Cross-Tenant Access
 
----
+A request must never:
+- Read another tenant's data
+- Consume another tenant's quotas
+- Influence another tenant's control-plane state
 
-### B. Cross-tenant access
+### C. Quota Bypass
 
-- A request must never:
-  - read another tenant’s data
-  - consume another tenant’s quotas
-  - influence another tenant’s control-plane state
+- A tool must never execute if quota checks cannot complete reliably
+- Adapter errors or missing data must not bypass limits
 
----
-
-### C. Quota bypass
-
-- A tool must never execute if quota checks cannot complete reliably.
-- Adapter errors or missing data must not bypass limits.
-
----
-
-### D. Silent allow
+### D. Silent Allow
 
 The system must never default to allow when:
-- configuration is missing or invalid
-- adapters are unavailable
-- policy evaluation fails
-- identity or tenant context is incomplete
+- Configuration is missing or invalid
+- Adapters are unavailable
+- Policy evaluation fails
+- Identity or tenant context is incomplete
+
+### E. Unbounded Amplification
+
+The control plane must not enable uncontrolled execution due to missing enforcement.
+
+### F. Enforcement Flow Integrity
+
+- The enforcement order must never be bypassed or reordered
+- No extension point may introduce an execution path that skips enforcement
 
 ---
 
-### E. Unbounded amplification
+## Canonical Execution Boundary
 
-- The control plane must not enable uncontrolled execution due to missing enforcement.
+All tool invocations must pass through a **single, internal execution boundary** (`executeToolBoundary`) that enforces:
 
----
+1. **Session Context Validation**
+   - Validate presence and structure of security-relevant context
+   - If invalid or missing → deny
+   - **No adapter calls, no quota actions, no tool execution**
 
-### F. Enforcement flow integrity
+2. **Tool Lookup**
+   - Verify the tool exists in the registry
+   - If unknown → deny with `TOOL_NOT_FOUND`
+   - **No authorization, no quota, no execution**
 
-- The enforcement order must never be bypassed or reordered.
-- No extension point may introduce an execution path that skips enforcement.
+3. **Read-Only Mode Check**
+   - If `mode.readOnly === true` and tool is write-capable → deny with `READ_ONLY`
+   - **No authorization, no execution**
 
----
+4. **Authorization**
+   - Evaluate permission to invoke the specific tool for the given tenant/scope
+   - If denied or indeterminate → deny with `UNAUTHORIZED`
+   - **Tool must not execute**
 
-## 4) Canonical enforcement ordering
+5. **Quota / Limits**
+   - Enforce rate, concurrency, and usage constraints
+   - If quota evaluation fails → deny with `RATE_LIMITED`
+   - **Tool must not execute**
 
-For **every tool invocation attempt**, the system must enforce:
+6. **Execution**
+   - Tool execution may proceed **only after (1)–(5) succeed**
 
-1. **Context validation**
-   - Validate presence and structure of security-relevant context.
-   - If invalid or missing → deny.
-   - **No adapter calls, no quota actions, no tool execution.**
+If execution fails mid-flight, quota integrity must be preserved (no leaked reservations, no retry-based bypass).
 
-2. **Authorization**
-   - Evaluate permission to invoke the specific tool for the given tenant/scope.
-   - If denied or indeterminate → deny.
-   - **Tool must not execute.**
-
-3. **Quota / limits**
-   - Enforce rate, concurrency, and usage constraints.
-   - If quota evaluation fails → deny.
-   - **Tool must not execute.**
-
-4. **Execution**
-   - Tool execution may proceed **only after (1)–(3) succeed**.
-
-If execution fails mid-flight, quota integrity must be preserved
-(no leaked reservations, no retry-based bypass).
+**No other code path may execute tools directly.** Bypassing this boundary is a security violation.
 
 ---
 
-## 5) Zero side-effects guarantee
+## Frozen Invariants (Verified by Tests)
+
+The following security invariants are **explicitly verified by executable tests**. These tests assert observable behavior, including denial outcomes and the absence of side effects.
+
+The test suite **must pass in CI** for any change affecting:
+- Execution boundaries
+- Authorization
+- Quotas
+- Adapters
+
+### Test-Verified Invariants
+
+#### 1. Fail-Closed on Missing or Invalid SessionContext
+
+**Invariant**: Missing or invalid session context prevents all tool execution and produces zero side effects.
+
+**Test**: `tests/security/invariant.session-context.fail-closed.test.js`
+
+**Observable Behavior**:
+- Denial with `SESSION_CONTEXT_INVALID`
+- Zero tool execution
+- Zero adapter calls (auth, db, policy, quota)
+- Zero database operations
+
+#### 2. Authorization Precedes Execution
+
+**Invariant**: Authorization denial prevents tool execution and prevents adapter usage.
+
+**Test**: `tests/security/invariant.authorization-precedes-execution.test.js`
+
+**Observable Behavior**:
+- Denial with `UNAUTHORIZED` or `AUTHORIZATION_DENIED`
+- Zero tool handler invocation
+- Zero database operations
+- Authorization check occurs before any execution path
+
+#### 3. Unknown Tools Produce Zero Side Effects
+
+**Invariant**: Unknown or unregistered tool names are denied without any side effects.
+
+**Test**: `tests/security/invariant.unknown-tool-zero-effects.test.js`
+
+**Observable Behavior**:
+- Denial with `TOOL_NOT_FOUND`
+- Zero authorization checks
+- Zero adapter calls
+- Zero quota reservation
+- Tool lookup failure prevents all downstream operations
+
+#### 4. Read-Only Mode Blocks Writes Before Authorization
+
+**Invariant**: Read-only mode blocks write operations before authorization checks or tool execution.
+
+**Test**: `tests/security/invariant.read-only-blocks-writes.test.js`
+
+**Observable Behavior**:
+- Denial with `READ_ONLY`
+- Zero tool execution
+- Zero adapter calls (auth, db, policy, quota)
+- Read-only check precedes authorization evaluation
+
+---
+
+## Conceptual Invariants (Design Intent)
+
+The following invariants represent design intent and architectural principles. They are not currently verified by dedicated security tests but inform the system's security model.
+
+### Zero Side-Effects Guarantee
 
 For the following conditions, the system must produce **zero observable side effects**:
 
@@ -204,7 +254,7 @@ For the following conditions, the system must produce **zero observable side eff
 - Quota enforcement failure
 - Read-only violation
 
-“Zero side effects” means:
+"Zero side effects" means:
 - No tool execution
 - No adapter calls (DB, network, etc.)
 - No quota reservation
@@ -212,36 +262,15 @@ For the following conditions, the system must produce **zero observable side eff
 
 Audit logging is permitted **only if it does not alter enforcement outcomes**.
 
----
-
-## 6) Read-only enforcement precedence
-
-When the system is operating in **read-only mode**:
-
-- Any tool invocation that would perform a write **must be denied**.
-- The denial reason must be **READ_ONLY**.
-- Read-only enforcement must occur **before any write-capable execution**.
-- Authorization success must not override read-only restrictions.
-
----
-
-## 7) Unknown tool handling
-
-- If a requested tool name is not registered:
-  - The request must be denied with `TOOL_NOT_FOUND`.
-  - No authorization, quota, adapter, or tool logic may run.
-  - No side effects are permitted.
-
----
-
-## 8) Canonical denial codes (internal contract)
+### Canonical Denial Codes
 
 The execution boundary must produce **structured, explicit denial reasons**:
 
 - `SESSION_CONTEXT_INVALID`
 - `TOOL_NOT_FOUND`
-- `UNAUTHORIZED`
 - `READ_ONLY`
+- `UNAUTHORIZED`
+- `RATE_LIMITED`
 - `ADAPTER_FAILURE`
 - `DENIED` (catch-all if no more specific reason applies)
 
@@ -249,57 +278,35 @@ The execution boundary must produce **structured, explicit denial reasons**:
 
 ---
 
-## 9) Execution boundary requirement
+## Write Operations and Read-Only Enforcement
 
-All tool invocations must pass through a **single, internal execution boundary**
-that enforces:
+**The core library CAN execute database writes** if write-capable tools are implemented and registered.
 
-- context validation
-- authorization
-- quota enforcement
-- read-only restrictions
-- non-execution on denial
+**Write safety is NOT a global guarantee of the core library.** Write safety is a property of specific tool implementations.
 
-No other code path may execute tools directly.
+### Read-Only Mode Enforcement
 
----
+- When `mode.readOnly === true`, the execution boundary denies write-capable tools with `READ_ONLY`
+- This denial occurs **before authorization checks** and **before tool execution**
+- Authorization success does not override read-only restrictions
+- Read-only enforcement is boundary-level, not tool-level
 
-## 10) Verified by Tests
+### Write-Capable Tools
 
-The following security invariants are **explicitly verified by executable tests**.
-These tests assert observable behavior, including denial outcomes and the
-absence of side effects.
+If you implement tools that perform database mutations (INSERT/UPDATE/DELETE/DDL), you must:
 
-The test suite **must pass in CI** for any change affecting:
-- execution boundaries
-- authorization
-- quotas
-- adapters
+1. Define explicit authorization/capability requirements for write operations
+2. Implement strict input validation and SQL construction controls
+3. Use allowlist-based targeting (schemas/tables/operations) where applicable
+4. Add audit logging sufficient for incident response
+5. Implement rate limiting and quotas appropriate for mutation operations
+6. Document operator responsibilities (credentials, monitoring, incident response)
 
-### Verified invariants
-
-- **Fail-closed on missing or invalid SessionContext**  
-  Test:  
-  - `tests/security/invariant.session-context.fail-closed.test.js`
-
-- **Authorization precedes execution**  
-  Test:  
-  - `tests/security/invariant.authorization-precedes-execution.test.js`
-
-- **Unknown tools produce zero side effects**  
-  Test:  
-  - `tests/security/invariant.unknown-tool-zero-effects.test.js`
-
-- **Read-only mode blocks writes before authorization or execution**  
-  Test:  
-  - `tests/security/invariant.read-only-blocks-writes.test.js`
-
-If any of these tests fail, the system must be considered
-**non-compliant with its security contract**, regardless of documentation or intent.
+**Reference tools** (`list_tables`, `describe_table`, `query_read`) are strictly read-only and demonstrate secure tool construction patterns.
 
 ---
 
-## 11) Changes that require security review
+## Changes Requiring Security Review
 
 The following changes **must not be merged without explicit security review**:
 
@@ -311,31 +318,55 @@ The following changes **must not be merged without explicit security review**:
 - Request validation or parsing
 - Audit behavior affecting enforcement flow
 - Any change that could introduce side effects before authorization
+- Modifications to `executeToolBoundary` control flow or check ordering
 
 Security review must verify that **no new path enables**:
-- unauthorized execution
-- quota bypass
-- cross-tenant influence
-- silent allow
+- Unauthorized execution
+- Quota bypass
+- Cross-tenant influence
+- Silent allow
+
+See [`SECURITY-CHANGE-CHECKLIST.md`](SECURITY-CHANGE-CHECKLIST.md) for the review process.
 
 ---
 
-## 12) Explicit non-goals
+## Explicit Non-Goals
 
 These invariants do **not** guarantee:
 
-- Tool sandboxing or runtime isolation
-- Tool correctness or safety
-- Network-level security
-- Secrets management
-- Compliance certification
-- Data exfiltration prevention
+- **Tool sandboxing or runtime isolation** — Tools execute in the same process
+- **Tool correctness or safety** — Tools are untrusted computation
+- **Network-level security** — Transport security is external
+- **Secrets management** — Credential storage and rotation are external
+- **Compliance certification** — No HIPAA, SOC 2, PCI-DSS, or similar guarantees
+- **Data exfiltration prevention** — Tools can read and return data
+- **Global read-only system** — Write-capable tools can be implemented
 
-These concerns must be addressed by the surrounding infrastructure.
+These concerns must be addressed by the surrounding infrastructure and operational controls.
 
 ---
 
-## Security posture summary
+## Security Posture Summary
 
-> This library does not make agents smarter.  
+> This library does not make agents smarter.
+> 
 > It exists to make agent execution safer.
+
+The focus is on fail-closed enforcement, zero side effects for invalid requests, and defense in depth for the operations that are allowed.
+
+---
+
+## Documentation References
+
+- [`BASELINE-WEEK1-4.md`](BASELINE-WEEK1-4.md) — Frozen baseline declaration
+- [`SECURITY-CHANGE-CHECKLIST.md`](SECURITY-CHANGE-CHECKLIST.md) — Security review checklist
+- [`SECURITY.md`](SECURITY.md) — Vulnerability reporting and disclosure policy
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — Contribution guidelines and security expectations
+
+---
+
+**Last Updated**: January 2026
+
+**Test Suite Status**: All security invariant tests passing
+
+If any frozen invariant test fails, the system must be considered **non-compliant with its security contract**, regardless of documentation or intent.

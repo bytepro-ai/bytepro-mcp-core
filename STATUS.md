@@ -1,132 +1,188 @@
-# 🎉 Project Status
 
-## Overall Status
+# Project Status
 
-**Release Readiness:** 🟢 **GO — Experimental (Security-Ready, API-Unstable)**
+## Current State
 
-The project has reached a security-ready baseline with **explicitly defined and
-test-verified security invariants**. The core execution boundary is sealed,
-fail-closed behavior is proven, and enforcement ordering is guaranteed by
-executable tests.
+**Status**: Experimental — Security baseline frozen (Week 1–4)
 
-This status **does not imply GA or production readiness**. API stability,
-long-term compatibility, and enterprise guarantees are intentionally out of scope
-at this stage.
+**Security Posture**: Fail-closed enforcement verified by executable tests
+
+**Operational Readiness**: Requires operator review for production deployment
 
 ---
 
-## Timeline Status
+## What Exists
 
-- Week 1: ✅ Complete
-- Week 2: ✅ Complete
-- Week 3 — Block 1 (ORDER BY Allowlist): ✅ Complete
-- Week 3 — Block 2 (Authorization): ✅ Complete
-- Week 3 — Block 3 (Quotas & Rate Limiting): ✅ Complete
-- Week 4 — Security Hardening & Execution Boundary: ✅ Complete
+### Core Library
 
-### Week 3 Validation Summary
-- Block 1: ORDER BY Allowlist — **100% pass**
-- Block 2: Authorization (RBAC / ABAC) — **100% pass**
-- Block 3: Quotas & Rate Limiting — **100% pass + hardening**
+- **Execution Boundary**: [`src/core/executeToolBoundary.js`](src/core/executeToolBoundary.js)
+  - Session context validation (fail-closed)
+  - Tool lookup (unknown tools denied before side effects)
+  - Read-only mode enforcement
+  - Authorization evaluation (capability-based, default deny)
+  - Quota enforcement (rate limits, concurrency limits)
 
-Week 2 validated with a real PostgreSQL database and MCP Inspector.
+- **Database Adapters**:
+  - PostgreSQL ([`src/adapters/postgres.js`](src/adapters/postgres.js))
+  - MySQL ([`src/adapters/mysql.js`](src/adapters/mysql.js))
+  - Adapter registry for runtime selection
 
----
+- **Security Primitives**:
+  - Allowlist-based access control (schemas, tables)
+  - Query guards and SQL validation
+  - Capability-based authorization ([`src/security/capabilities.js`](src/security/capabilities.js))
+  - Quota engine with token bucket algorithm ([`src/security/quotas.js`](src/security/quotas.js))
+  - Audit logging (tool invocations, authorization decisions, query fingerprints)
 
-## 📊 Implementation Metrics
+### Reference Tools (Read-Only)
 
-- **Source Files**: 15 JavaScript modules (~1,700 LOC)
-- **Security Boundary**: Single internal execution boundary (`executeToolBoundary`)
-- **Documentation**: Security contracts + operational guides
-- **Security Tests**: 4/4 critical invariants verified ✅
-- **Code Quality**: 0 errors, 0 warnings
-- **Dependencies**: Minimal, stable, pinned
-- **Node.js**: >= 18 (ESM)
+- **`list_tables`**: Lists tables in allowed schemas
+- **`describe_table`**: Returns detailed schema information
+- **`query_read`**: Executes SELECT queries with validation and result limiting
 
----
+All reference tools enforce read-only constraints via boundary-level checks, SQL validation, and DB-session enforcement.
 
-## ✨ What’s Been Built
+### Write Capability
 
-### Core MCP Runtime
-- ✅ MCP SDK integration (v1.0.4)
-- ✅ stdio transport (MCP Inspector compatible)
-- ✅ Canonical tool registry
-- ✅ Centralized execution boundary
-- ✅ Structured, fail-closed responses
-- ✅ Graceful shutdown handling
+**The core library CAN execute database writes** if write-capable tools are implemented and registered.
 
-### Execution Boundary (Security-Critical)
-- ✅ Single internal execution entrypoint
-- ✅ Context validation
-- ✅ Read-only enforcement (structural, precedence-safe)
-- ✅ Authorization enforcement
-- ✅ Quota & rate limiting
-- ✅ Zero side effects on denial
-- ✅ No execution outside the boundary
+**Write safety is NOT a global guarantee.** Write safety is a property of specific tool implementations.
 
-### Database Layer
-- ✅ PostgreSQL adapter with connection pooling
-- ✅ Health checks and fail-closed error handling
-- ✅ Adapter registry for extensibility
-- ✅ Adapter treated as untrusted
-
-### Security Layer
-- ✅ Schema allowlist enforcement
-- ✅ Table allowlist enforcement (optional)
-- ✅ Query guard blocking dangerous patterns
-- ✅ Result size limits
-- ✅ Read-only mode by default
-- ✅ RBAC / ABAC authorization
-- ✅ Quota & rate limiting
-- ✅ Audit logging (control-plane events only)
-
-### Tools (Community Scope)
-- ✅ `list_tables` — schema-scoped introspection
-- ✅ `describe_table` — table schema inspection
-- ✅ Zod input validation
-- ✅ Full enforcement on every call
+See [`examples/mysql-write-controlled/`](examples/mysql-write-controlled/) for a reference implementation with defense-in-depth controls.
 
 ---
 
-## 🧪 Security Validation (Executable Evidence)
+## Security Baseline (Frozen)
 
-All **non-negotiable security invariants** are verified by executable tests:
+The security baseline is defined in [`BASELINE-WEEK1-4.md`](BASELINE-WEEK1-4.md) and verified by tests in [`tests/security/`](tests/security/).
 
-- ✅ Fail-closed on missing or invalid SessionContext  
-- ✅ Authorization precedes execution  
-- ✅ Unknown tools produce zero side effects  
-- ✅ Read-only mode blocks writes before authorization or execution  
+**Frozen Invariants (Test-Verified)**:
 
-Test files:
-- `tests/security/invariant.session-context.fail-closed.test.js`
-- `tests/security/invariant.authorization-precedes-execution.test.js`
-- `tests/security/invariant.unknown-tool-zero-effects.test.js`
-- `tests/security/invariant.read-only-blocks-writes.test.js`
+1. **Fail-Closed on Missing/Invalid SessionContext**  
+   Test: [`tests/security/invariant.session-context.fail-closed.test.js`](tests/security/invariant.session-context.fail-closed.test.js)
 
-If any of these tests fail, the system must be considered **non-compliant**.
+2. **Authorization Precedes Execution**  
+   Test: [`tests/security/invariant.authorization-precedes-execution.test.js`](tests/security/invariant.authorization-precedes-execution.test.js)
 
----
+3. **Unknown Tools Produce Zero Side Effects**  
+   Test: [`tests/security/invariant.unknown-tool-zero-effects.test.js`](tests/security/invariant.unknown-tool-zero-effects.test.js)
 
-## 📚 Documentation Status
+4. **Read-Only Mode Blocks Writes Before Authorization**  
+   Test: [`tests/security/invariant.read-only-blocks-writes.test.js`](tests/security/invariant.read-only-blocks-writes.test.js)
 
-- **README.md** — Project overview (experimental scope)
-- **SECURITY-INVARIANTS.md** — Non-negotiable security contracts
-- **SECURITY-CHANGE-CHECKLIST.md** — Main-branch security gate
-- **IMPLEMENTATION-SUMMARY.md** — Architecture and design details
-- **QUICKREF.md** — Operational quick reference
-- **Manual test guides** — MCP Inspector + PostgreSQL
+5. **Write Tool Controlled Execution**  
+   Test: [`tests/security/invariant.write-tool-controlled.test.js`](tests/security/invariant.write-tool-controlled.test.js)
+
+**All baseline tests must pass** for the system to be considered compliant with its security contract.
+
+See [`SECURITY-INVARIANTS.md`](SECURITY-INVARIANTS.md) for the complete security model.
 
 ---
 
-## 🚀 How to Run (Developer Mode)
+## Implementation Metrics
+
+- **Core Modules**: 15+ JavaScript files (ESM)
+- **Security Tests**: 5 frozen invariants (100% passing)
+- **Database Adapters**: 2 (PostgreSQL, MySQL)
+- **Reference Tools**: 3 (read-only introspection and query execution)
+- **Dependencies**: Minimal (MCP SDK, pg, mysql2, zod, pino)
+
+---
+
+## Validation
+
+**Run security tests**:
 
 ```bash
-# Install dependencies
-npm install
+npm test
+```
 
-# Configure environment
-cp .env.example .env
-# Edit .env with PostgreSQL credentials
+**Run server**:
 
-# Run server
+```bash
 npm run dev
+```
+
+Connect via MCP Inspector using stdio transport.
+
+**Verify baseline**:
+
+All tests in [`tests/security/`](tests/security/) must pass. Baseline is invalidated if any test fails.
+
+---
+
+## Explicit Non-Goals
+
+The following are **intentionally out of scope**:
+
+- **Global read-only system**: Write-capable tools can be implemented
+- **Tool sandboxing**: Tools execute in the same process
+- **Authentication/IAM**: Identity and authentication are external
+- **Compliance certification**: No HIPAA, SOC 2, PCI-DSS guarantees
+- **Data exfiltration prevention**: Tools can read and return data
+
+See [`SECURITY-INVARIANTS.md`](SECURITY-INVARIANTS.md) and [`README.md`](README.md) for complete details.
+
+---
+
+## Deployment Guidance
+
+**Before deploying to production**:
+
+1. Review [`SECURITY-INVARIANTS.md`](SECURITY-INVARIANTS.md)
+2. Review [`BASELINE-WEEK1-4.md`](BASELINE-WEEK1-4.md)
+3. Verify all security tests pass (`npm test`)
+4. Configure database credentials with least-privilege access
+5. Implement monitoring and audit log retention
+6. Define incident response procedures
+7. If implementing write-capable tools, follow [`examples/mysql-write-controlled/README.md`](examples/mysql-write-controlled/README.md)
+
+**Operator Responsibilities**:
+
+- Credential isolation and rotation
+- Authorization policy definition
+- Quota configuration appropriate for risk tolerance
+- Monitoring and alerting
+- Compliance and data governance
+
+---
+
+## Documentation
+
+### Core Documentation
+
+- [`README.md`](README.md) — Project overview and quick start
+- [`SECURITY-INVARIANTS.md`](SECURITY-INVARIANTS.md) — Security contracts and threat model
+- [`BASELINE-WEEK1-4.md`](BASELINE-WEEK1-4.md) — Frozen security baseline
+- [`SECURITY.md`](SECURITY.md) — Vulnerability reporting and disclosure policy
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — Contribution guidelines and security expectations
+- [`SECURITY-CHANGE-CHECKLIST.md`](SECURITY-CHANGE-CHECKLIST.md) — Security review checklist
+
+### Examples
+
+- `examples/postgres-introspection/` — Read-only PostgreSQL introspection
+- [`examples/mysql-write-controlled/`](examples/mysql-write-controlled/) — Write-enabled tool with defense-in-depth
+
+### Manual Testing
+
+- [`tests/manual/week-02-query_read.md`](tests/manual/week-02-query_read.md) — Query tool testing guide
+
+---
+
+## Support
+
+**Security vulnerabilities**: Report via GitHub Security Advisories or contact maintainers privately
+
+**General questions**: Open a public GitHub issue (without vulnerability details)
+
+---
+
+## License
+
+Apache-2.0. See [`LICENSE`](LICENSE).
+
+---
+
+**Last Updated**: January 2026  
+**Baseline Status**: Frozen (Week 1–4)  
+**Test Suite Status**: All security invariant tests passing
