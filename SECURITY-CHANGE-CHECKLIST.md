@@ -130,6 +130,5 @@ Mandatory invariant tests:
 
 **Reminder**
 
-> Documentation, intent, or confidence do not override executable evidence.
-> Jest security invariant tests are the single source of enforceable security behavior. If `npm test` fails, the change must not be committed.
+Jest security invariant tests are the single source of enforceable security behavior. If `npm test` fails, the change must not be committed.
 > If invariant tests fail, the change must not land.
