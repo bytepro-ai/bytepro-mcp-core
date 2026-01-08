@@ -15,10 +15,10 @@ the change must be treated as **NOT READY** and **must not land**.
 This checklist applies when:
 - working directly on `main`
 - working solo (no PRs)
-- working with or without CI
+- no CI is assumed (if CI exists in a downstream fork, it must run the same local gate: `npm test`)
 - refactoring, extending, or optimizing security-sensitive code
 
-The absence of a pull request **does not relax security requirements**.
+No PR workflow is assumed; direct commits to `main` **do not relax security requirements**.
 
 ---
 
@@ -43,9 +43,9 @@ The absence of a pull request **does not relax security requirements**.
 
 I verified the canonical enforcement order is preserved:
 
-**Context validation → Read-only enforcement → Authorization → Quota/Limits → Execution**
+**Context validation → Tool lookup → Read-only enforcement → Authorization → Quota/Limits → Execution**
 
-- [ ] No reordering was introduced
+- [ ] No reordering was introduced (including preserving “tool lookup before read-only/auth/quota/execution”)
 - [ ] No optional bypass exists
 - [ ] No alternative entrypoint skips any step
 - [ ] Error paths cannot trigger execution (timeouts, adapter failures, partial failures)
@@ -131,4 +131,5 @@ Mandatory invariant tests:
 **Reminder**
 
 > Documentation, intent, or confidence do not override executable evidence.
+> Jest security invariant tests are the single source of enforceable security behavior. If `npm test` fails, the change must not be committed.
 > If invariant tests fail, the change must not land.
