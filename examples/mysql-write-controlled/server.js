@@ -5,7 +5,6 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 
-import { config } from '../../src/config/env.js';
 import { logger } from '../../src/utils/logger.js';
 import { adapterRegistry } from '../../src/adapters/adapterRegistry.js';
 import { createSessionContextFromEnv } from '../../src/core/sessionContext.js';

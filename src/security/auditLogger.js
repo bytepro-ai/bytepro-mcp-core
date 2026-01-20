@@ -21,15 +21,19 @@
 
 import crypto from 'crypto';
 
-// Server-secret for HMAC operations (REQUIRED - no insecure defaults)
-const SERVER_SECRET = process.env.AUDIT_SECRET;
-
-// Fail-closed: If AUDIT_SECRET is not set or is weak, abort at module load
-if (!SERVER_SECRET || SERVER_SECRET.length < 32) {
-  throw new Error(
-    'AUDIT_SECRET environment variable must be set and at least 32 characters. ' +
-    'Generate with: openssl rand -hex 32'
-  );
+// Server-secret for HMAC operations (Lazy loaded)
+function getAuditSecret() {
+  const secret = process.env.AUDIT_SECRET;
+  
+  // Fail-closed: If AUDIT_SECRET is not set or is weak, abort at runtime
+  if (!secret || secret.length < 32) {
+    throw new Error(
+      'AUDIT_SECRET environment variable must be set and at least 32 characters. ' +
+      'Generate with: openssl rand -hex 32'
+    );
+  }
+  
+  return secret;
 }
 
 /**
@@ -73,7 +77,7 @@ export function computeQueryFingerprint(query) {
   normalized = normalized.replace(/\s+/g, ' ').trim();
 
   // Step 6: HMAC the shape
-  const hmac = crypto.createHmac('sha256', SERVER_SECRET);
+  const hmac = crypto.createHmac('sha256', getAuditSecret());
   hmac.update(normalized);
   return hmac.digest('hex');
 }

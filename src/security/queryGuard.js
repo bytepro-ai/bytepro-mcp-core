@@ -1,4 +1,3 @@
-import { config } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -7,9 +6,11 @@ import { logger } from '../utils/logger.js';
  */
 export class QueryGuard {
   constructor() {
-    this.readOnly = config.security.readOnly;
-    this.maxTables = config.security.maxTables;
-    this.maxColumns = config.security.maxColumns;
+    this.readOnly = (process.env.READ_ONLY !== undefined)
+      ? process.env.READ_ONLY === 'true'
+      : true;
+    this.maxTables = Number(process.env.MAX_TABLES) || 100;
+    this.maxColumns = Number(process.env.MAX_COLUMNS) || 200;
 
     // Dangerous SQL patterns to block
     this.dangerousPatterns = [

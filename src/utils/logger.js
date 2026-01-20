@@ -1,12 +1,11 @@
 import pino from 'pino';
-import { config } from '../config/env.js';
 
 /**
  * Create a configured logger instance with audit metadata support
  */
 export const logger = pino({
-  level: config.logging.level,
-  ...(config.logging.pretty && {
+  level: process.env.LOG_LEVEL || 'info',
+  ...((process.env.LOG_PRETTY === 'true') && {
     transport: {
       target: 'pino-pretty',
       options: {
@@ -17,8 +16,8 @@ export const logger = pino({
     },
   }),
   base: {
-    app: config.app.name,
-    version: config.app.version,
+    app: process.env.APP_NAME || 'mcp-server',
+    version: process.env.APP_VERSION || '1.0.0',
   },
 });
 

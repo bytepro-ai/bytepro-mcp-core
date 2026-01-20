@@ -1,4 +1,3 @@
-import { config } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -7,8 +6,17 @@ import { logger } from '../utils/logger.js';
  */
 export class Allowlist {
   constructor() {
-    this.allowedSchemas = new Set(config.security.allowlistSchemas);
-    this.allowedTables = new Set(config.security.allowlistTables);
+    const allowlistSchemas = (process.env.ALLOWLIST_SCHEMAS || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    const allowlistTables = (process.env.ALLOWLIST_TABLES || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    
+    this.allowedSchemas = new Set(allowlistSchemas);
+    this.allowedTables = new Set(allowlistTables);
     this.allowAllTables = this.allowedTables.size === 0; // Empty list means allow all tables
 
     logger.info(

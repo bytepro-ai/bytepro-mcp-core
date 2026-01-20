@@ -13,6 +13,9 @@ yarn-error.log*
 # OS files
 .DS_Store
 
+# Package files
+*.tgz
+
 # Environment variables
 .env
 .env.*

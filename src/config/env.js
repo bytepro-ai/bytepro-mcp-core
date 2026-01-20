@@ -49,5 +49,10 @@ export function loadConfig() {
   return result.data;
 }
 
-// Export singleton config instance
-export const config = loadConfig();
+/**
+ * Get validated configuration instance
+ * @returns {Object} Validated configuration
+ */
+export function getConfig() {
+  return loadConfig();
+}

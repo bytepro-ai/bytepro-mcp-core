@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Core runtime for building MCP servers that connect enterprise systems to AI.",
   "type": "module",
-  "main": "src/core/server.js",
+  "main": "src/index.js",
   "scripts": {
     "dev": "nodemon src/core/server.js",
     "start": "node src/core/server.js",

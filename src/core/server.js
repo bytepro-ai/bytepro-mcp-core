@@ -5,7 +5,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 
-import { config } from '../config/env.js';
+import { getConfig } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import { adapterRegistry } from '../adapters/adapterRegistry.js';
 import { toolRegistry } from './toolRegistry.js';
@@ -34,6 +34,9 @@ class MCPServer {
   async initialize() {
     try {
       logger.info('Initializing MCP server...');
+
+      // Load and validate configuration
+      const config = getConfig();
 
       // SECURITY: Bind session context FIRST (fail-closed if missing)
       // This MUST happen before any data-plane initialization

@@ -1,5 +1,4 @@
 import pg from 'pg';
-import { config } from '../config/env.js';
 import { logger } from './logger.js';
 
 const { Pool } = pg;
@@ -24,15 +23,15 @@ class PostgresPool {
     }
 
     const poolConfig = {
-      host: config.pg.host,
-      port: config.pg.port,
-      user: config.pg.user,
-      password: config.pg.password,
-      database: config.pg.database,
-      ssl: config.pg.ssl ? { rejectUnauthorized: false } : false,
-      max: config.pg.maxConnections,
-      idleTimeoutMillis: config.pg.idleTimeoutMillis,
-      connectionTimeoutMillis: config.pg.connectionTimeoutMillis,
+      host: process.env.PG_HOST,
+      port: Number(process.env.PG_PORT) || 5432,
+      user: process.env.PG_USER,
+      password: process.env.PG_PASSWORD,
+      database: process.env.PG_DATABASE,
+      ssl: process.env.PG_SSL === 'true' ? { rejectUnauthorized: false } : false,
+      max: Number(process.env.PG_MAX_CONNECTIONS) || 10,
+      idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS) || 10000,
+      connectionTimeoutMillis: Number(process.env.PG_CONNECTION_TIMEOUT_MS) || 2000,
     };
 
     this.pool = new Pool(poolConfig);
@@ -54,10 +53,10 @@ class PostgresPool {
 
     logger.info(
       {
-        host: config.pg.host,
-        port: config.pg.port,
-        database: config.pg.database,
-        maxConnections: config.pg.maxConnections,
+        host: process.env.PG_HOST,
+        port: Number(process.env.PG_PORT) || 5432,
+        database: process.env.PG_DATABASE,
+        maxConnections: Number(process.env.PG_MAX_CONNECTIONS) || 10,
       },
       'PostgreSQL pool initialized'
     );
