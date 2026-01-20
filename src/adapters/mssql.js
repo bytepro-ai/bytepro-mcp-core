@@ -1,6 +1,7 @@
 import { BaseAdapter } from './baseAdapter.js';
 import { logger } from '../utils/logger.js';
 import { isValidSessionContext } from '../core/sessionContext.js';
+import { allowlist } from '../security/allowlist.js';
 
 export class MSSQLAdapter extends BaseAdapter {
   constructor(config) {
@@ -187,7 +188,129 @@ export class MSSQLAdapter extends BaseAdapter {
       }
     }
 
-    throw new Error('Not implemented');
+    // Extract and validate table references
+    const tables = new Set();
+
+    // Pattern 1: FROM clause - matches FROM schema.table or FROM table
+    const fromPattern = /\bFROM\s+(?:(\w+)\.)?(\w+)/gi;
+    let match;
+
+    while ((match = fromPattern.exec(normalized)) !== null) {
+      const schema = match[1];
+      const table = match[2];
+
+      if (schema) {
+        tables.add(`${schema}.${table}`);
+      } else {
+        throw new Error('Table references must be schema-qualified (schema.table)');
+      }
+    }
+
+    // Pattern 2: JOIN clause - matches JOIN schema.table or JOIN table
+    const joinPattern = /\b(?:INNER\s+|LEFT\s+|RIGHT\s+|FULL\s+)?JOIN\s+(?:(\w+)\.)?(\w+)/gi;
+
+    while ((match = joinPattern.exec(normalized)) !== null) {
+      const schema = match[1];
+      const table = match[2];
+
+      if (schema) {
+        tables.add(`${schema}.${table}`);
+      } else {
+        throw new Error('Table references must be schema-qualified (schema.table)');
+      }
+    }
+
+    // Fail-closed: Query must reference at least one table
+    if (tables.size === 0) {
+      throw new Error('Query must reference at least one table');
+    }
+
+    // Enforce allowlist for each referenced table
+    for (const fullTableName of tables) {
+      const [schema, table] = fullTableName.split('.');
+
+      if (!schema || !table) {
+        throw new Error(`Invalid table reference format: ${fullTableName}`);
+      }
+
+      // Check schema allowlist
+      if (!allowlist.isSchemaAllowed(schema)) {
+        throw new Error(`Access denied: Schema "${schema}" is not in the allowlist`);
+      }
+
+      // Check table allowlist
+      if (!allowlist.isTableAllowed(schema, table)) {
+        throw new Error(`Access denied: Table "${fullTableName}" is not in the allowlist`);
+      }
+    }
+
+    if (!this.connected || !this.pool) {
+      throw new Error('Adapter not connected');
+    }
+
+    const limitValue = Number(params.limit);
+    const requestedLimit = Number.isFinite(limitValue) && limitValue > 0 ? limitValue : 100;
+    const maxRows = Math.min(requestedLimit, 1000);
+    let appliedLimit = maxRows;
+
+    const timeoutValue = Number(params.timeout);
+    const requestedTimeout = Number.isFinite(timeoutValue) && timeoutValue > 0 ? timeoutValue : 30000;
+    const queryTimeout = Math.min(requestedTimeout, 60000);
+
+    let finalQuery = normalized;
+    const topRegex = /^SELECT\s+(?:DISTINCT\s+)?TOP\s+\(?([0-9]+)\)?/i;
+    const topMatch = finalQuery.match(topRegex);
+
+    if (topMatch) {
+      const existingLimit = parseInt(topMatch[1], 10);
+
+      if (!Number.isFinite(existingLimit) || existingLimit <= 0) {
+        throw new Error('Invalid TOP clause value');
+      }
+
+      appliedLimit = Math.min(existingLimit, maxRows);
+
+      if (appliedLimit !== existingLimit) {
+        finalQuery = finalQuery.replace(/^SELECT\s+(DISTINCT\s+)?TOP\s+\(?[0-9]+\)?/i, (_, distinctPart) => {
+          const distinctSegment = distinctPart ? 'DISTINCT ' : '';
+          return `SELECT ${distinctSegment}TOP ${appliedLimit} `;
+        });
+      }
+    } else if (/^SELECT\s+DISTINCT\s+/i.test(finalQuery)) {
+      finalQuery = finalQuery.replace(/^SELECT\s+DISTINCT\s+/i, `SELECT DISTINCT TOP ${appliedLimit} `);
+    } else {
+      finalQuery = finalQuery.replace(/^SELECT\s+/i, `SELECT TOP ${appliedLimit} `);
+    }
+
+    if (!/^SELECT\s+/i.test(finalQuery)) {
+      throw new Error('Invalid SELECT statement');
+    }
+
+    const request = this.pool.request();
+    request.timeout = queryTimeout;
+
+    const executionStart = Date.now();
+
+    let result;
+    try {
+      result = await request.query(finalQuery);
+    } catch (error) {
+      logger.error({ error: error.message }, 'MSSQL query execution failed');
+      throw new Error(`MSSQL query execution failed: ${error.message}`);
+    }
+
+    const rows = result?.recordset ?? [];
+    const rowCount = rows.length;
+    const truncated = rowCount === appliedLimit;
+    const executionTime = Date.now() - executionStart;
+
+    return {
+      rows,
+      rowCount,
+      truncated,
+      appliedLimit,
+      executionTime,
+    };
   }
 }
 
