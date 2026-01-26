@@ -5,6 +5,9 @@ import { z } from 'zod';
  * Validates environment variables and applies defaults
  */
 export const configSchema = z.object({
+  // Database Adapter Selection
+  adapter: z.enum(['postgres', 'mysql', 'mssql']).default('postgres'),
+
   // PostgreSQL Connection
   pg: z.object({
     host: z.string().min(1),
@@ -16,6 +19,28 @@ export const configSchema = z.object({
     maxConnections: z.coerce.number().int().min(1).max(100).default(10),
     idleTimeoutMillis: z.coerce.number().int().min(1000).default(30000),
     connectionTimeoutMillis: z.coerce.number().int().min(1000).default(5000),
+  }),
+
+  // MySQL Connection
+  mysql: z.object({
+    host: z.string().min(1),
+    port: z.coerce.number().int().min(1).max(65535).default(3306),
+    user: z.string().min(1),
+    password: z.string().min(1),
+    database: z.string().min(1),
+    ssl: z.coerce.boolean().default(false),
+    maxConnections: z.coerce.number().int().min(1).max(100).default(10),
+  }),
+
+  // MSSQL Connection
+  mssql: z.object({
+    host: z.string().min(1),
+    port: z.coerce.number().int().min(1).max(65535).default(1433),
+    user: z.string().min(1),
+    password: z.string().min(1),
+    database: z.string().min(1),
+    ssl: z.coerce.boolean().default(false),
+    maxConnections: z.coerce.number().int().min(1).max(100).default(10),
   }),
 
   // Security Configuration

@@ -85,8 +85,26 @@ class MCPServer {
       // INVARIANT: At this point, sessionContext is immutably bound with capabilities and quotas
       // All subsequent operations inherit this context
 
-      // Initialize database adapter
-      await adapterRegistry.initializeAdapter('postgres', config.pg);
+      // Initialize database adapter (dynamic selection)
+      const adapterName = config.adapter;
+      const adapterConfig = config[adapterName];
+
+      // SECURITY: Fail-closed validation of adapter selection
+      if (!adapterName || typeof adapterName !== 'string') {
+        throw new Error('Invalid adapter: config.adapter must be a non-empty string');
+      }
+
+      if (!adapterRegistry.hasAdapter(adapterName)) {
+        const available = adapterRegistry.listAdapters().join(', ');
+        throw new Error(`Unknown adapter "${adapterName}". Available adapters: ${available}`);
+      }
+
+      if (!adapterConfig || typeof adapterConfig !== 'object') {
+        throw new Error(`Missing configuration for adapter "${adapterName}": config.${adapterName} is required`);
+      }
+
+      logger.info({ adapter: adapterName }, 'Database adapter selected');
+      await adapterRegistry.initializeAdapter(adapterName, adapterConfig);
 
       // Create MCP server instance
       this.server = new Server(

@@ -10,6 +10,7 @@ dotenv.config();
  */
 export function loadConfig() {
   const rawConfig = {
+    adapter: process.env.DB_ADAPTER || 'postgres',
     pg: {
       host: process.env.PG_HOST,
       port: process.env.PG_PORT,
@@ -20,6 +21,24 @@ export function loadConfig() {
       maxConnections: process.env.PG_MAX_CONNECTIONS,
       idleTimeoutMillis: process.env.PG_IDLE_TIMEOUT_MS,
       connectionTimeoutMillis: process.env.PG_CONNECTION_TIMEOUT_MS,
+    },
+    mysql: {
+      host: process.env.MYSQL_HOST,
+      port: process.env.MYSQL_PORT ? parseInt(process.env.MYSQL_PORT, 10) : 3306,
+      user: process.env.MYSQL_USER,
+      password: process.env.MYSQL_PASSWORD,
+      database: process.env.MYSQL_DATABASE,
+      ssl: process.env.MYSQL_SSL === 'true',
+      maxConnections: process.env.MYSQL_MAX_CONNECTIONS ? parseInt(process.env.MYSQL_MAX_CONNECTIONS, 10) : 10,
+    },
+    mssql: {
+      host: process.env.MSSQL_HOST,
+      port: process.env.MSSQL_PORT ? parseInt(process.env.MSSQL_PORT, 10) : 1433,
+      user: process.env.MSSQL_USER,
+      password: process.env.MSSQL_PASSWORD,
+      database: process.env.MSSQL_DATABASE,
+      ssl: process.env.MSSQL_SSL === 'true',
+      maxConnections: process.env.MSSQL_MAX_CONNECTIONS ? parseInt(process.env.MSSQL_MAX_CONNECTIONS, 10) : 10,
     },
     security: {
       readOnly: process.env.READ_ONLY,

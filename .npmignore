@@ -1,0 +1,30 @@
+# Test files
+tests/
+test-*.js
+*.test.js
+jest.config.js
+
+# Internal documentation
+docs/internal/
+BASELINE-*.md
+STATUS.md
+SECURITY-CHANGE-CHECKLIST.md
+SECURITY-INVARIANTS.md
+
+# Development files
+.github/
+.vscode/
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Build artifacts
+*.tgz
+node_modules/
+npm-debug.log*
+
+# Editor files
+*.swp
+*.swo
+*~

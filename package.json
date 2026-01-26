@@ -1,10 +1,25 @@
 {
   "name": "@bytepro/mcp-core",
-  "private": true,
   "version": "0.1.0",
-  "description": "Core runtime for building MCP servers that connect enterprise systems to AI.",
+  "description": "Security-first library for building Model Context Protocol servers with database adapters and tool execution boundaries.",
   "type": "module",
   "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./adapters": "./src/adapters/adapterRegistry.js",
+    "./session": "./src/core/sessionContext.js",
+    "./capabilities": "./src/security/capabilities.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/**/*.js",
+    "examples/**/*.js",
+    "examples/**/*.md",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
   "scripts": {
     "dev": "nodemon src/core/server.js",
     "start": "node src/core/server.js",
@@ -21,10 +36,20 @@
     "mcp",
     "model-context-protocol",
     "database",
+    "database-adapter",
     "postgresql",
-    "ai"
+    "mysql",
+    "mssql",
+    "sql-server",
+    "security",
+    "sql-injection-prevention",
+    "query-guard",
+    "ai",
+    "llm",
+    "authorization",
+    "audit-logging"
   ],
-  "author": "",
+  "author": "BytePro AI",
   "license": "Apache-2.0",
   "bugs": {
     "url": "https://github.com/bytepro-ai/bytepro-mcp-core/issues"
@@ -36,6 +61,18 @@
     "pg": "^8.13.1",
     "pino": "^9.5.0",
     "zod": "^3.23.8"
+  },
+  "peerDependencies": {
+    "mysql2": "^3.0.0",
+    "mssql": "^11.0.0"
+  },
+  "peerDependenciesMeta": {
+    "mysql2": {
+      "optional": true
+    },
+    "mssql": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "eslint": "^9.16.0",

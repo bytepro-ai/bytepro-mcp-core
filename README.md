@@ -122,6 +122,22 @@ MYSQL_PASSWORD=your_password
 MYSQL_DATABASE=your_database
 ```
 
+**Using MSSQL:**
+
+To use the MSSQL adapter, set `DB_ADAPTER=mssql` and configure the following environment variables:
+
+```bash
+DB_ADAPTER=mssql
+MSSQL_HOST=localhost
+MSSQL_PORT=1433
+MSSQL_USER=sa
+MSSQL_PASSWORD=your_password
+MSSQL_DATABASE=master
+MSSQL_SSL=false
+```
+
+The MSSQL adapter supports the same reference tools as PostgreSQL and MySQL: `list_tables`, `describe_table`, and `query_read`.
+
 Security and operational settings:
 
 ```bash
