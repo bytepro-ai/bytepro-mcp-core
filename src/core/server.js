@@ -12,6 +12,7 @@ import { toolRegistry } from './toolRegistry.js';
 import { createSessionContextFromEnv } from './sessionContext.js';
 import { loadCapabilitiesFromEnv } from '../security/capabilities.js';
 import { loadQuotaEngineFromEnv } from '../security/quotas.js';
+import { DBPolicyEngine } from '../security/dbPolicyEngine.js';
 import * as responseFormatter from './responseFormatter.js';
 import { executeToolBoundary } from './executeToolBoundary.js';
 
@@ -45,6 +46,7 @@ class MCPServer {
         logger.info({
           identity: this.sessionContext.identity,
           tenant: this.sessionContext.tenant,
+          role: this.sessionContext.role,
           sessionId: this.sessionContext.sessionId,
         }, 'Session context bound');
       } catch (error) {
@@ -105,6 +107,24 @@ class MCPServer {
 
       logger.info({ adapter: adapterName }, 'Database adapter selected');
       await adapterRegistry.initializeAdapter(adapterName, adapterConfig);
+
+      // OPTIONAL: DB Policy Engine (v1-safe, backward compatible)
+      // If initialization fails, we log and continue without policy enforcement.
+      if (process.env.ENABLE_DB_POLICY === 'true') {
+        try {
+          const policyEngine = new DBPolicyEngine();
+          const activeAdapter = adapterRegistry.getAdapter();
+          await policyEngine.initialize(activeAdapter, this.sessionContext);
+          this.sessionContext.attachPolicyEngine(policyEngine);
+
+          logger.info({
+            tenant: this.sessionContext.tenant,
+            sessionId: this.sessionContext.sessionId,
+          }, 'DBPolicyEngine enabled and attached to session');
+        } catch (error) {
+          logger.error({ error: error.message }, 'DBPolicyEngine initialization failed; continuing without DB policy enforcement');
+        }
+      }
 
       // Create MCP server instance
       this.server = new Server(

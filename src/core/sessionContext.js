@@ -14,6 +14,10 @@ const quotaEngineMap = new WeakMap();
 const quotaEngineAttachedMap = new WeakMap();
 
 /**
+ * @typedef {import('../security/dbPolicyEngine.js').DBPolicyEngine} DBPolicyEngine
+ */
+
+/**
  * SessionContext: Immutable identity and tenant binding for MCP sessions
  * 
  * Security Invariants:
@@ -24,7 +28,16 @@ const quotaEngineAttachedMap = new WeakMap();
  * 5. Fail-closed: missing or invalid binding terminates session
  */
 export class SessionContext {
-  constructor() {
+  /** @type {DBPolicyEngine | undefined} */
+  #_policyEngine;
+
+  /** @type {boolean} */
+  #_policyEngineAttached;
+
+  /**
+   * @param {{ role?: string }=} options
+   */
+  constructor(options = undefined) {
     // Session state: UNBOUND -> BOUND (immutable transition)
     this._state = 'UNBOUND';
     
@@ -33,6 +46,14 @@ export class SessionContext {
     this._tenant = null;
     this._boundAt = null;
     this._sessionId = null;
+
+    // Governance: role binding (immutable after construction)
+    const role = (options && typeof options.role === 'string') ? options.role.trim() : '';
+    this._role = role.length > 0 ? role : 'default';
+
+    // Policy engine attachment (private, attach-once)
+    this.#_policyEngine = undefined;
+    this.#_policyEngineAttached = false;
     
     // Register this instance as valid
     validInstances.add(this);
@@ -135,6 +156,17 @@ export class SessionContext {
   get tenant() {
     this.assertBound();
     return this._tenant;
+  }
+
+  /**
+   * Get role (read-only)
+   *
+   * @returns {string} Bound role
+   * @throws {Error} If session is not bound
+   */
+  get role() {
+    this.assertBound();
+    return this._role;
   }
 
   /**
@@ -287,6 +319,56 @@ export class SessionContext {
    */
   get hasCapabilities() {
     return !!capabilitiesAttachedMap.get(this);
+  }
+
+  /**
+   * Attach DB policy engine to this session (one-time operation)
+   *
+   * SECURITY: Policy engine must be attached after binding and before any tool execution
+   *
+   * @param {DBPolicyEngine} engine - DB policy engine instance
+   * @throws {Error} If engine is null/undefined, already attached, or session not bound
+   */
+  attachPolicyEngine(engine) {
+    // INVARIANT: Session must be bound before attaching policy engine
+    if (this._state !== 'BOUND') {
+      throw new Error('SessionContext: Cannot attach policy engine to unbound session');
+    }
+
+    if (!engine) {
+      throw new Error('SessionContext: Policy engine must be provided');
+    }
+
+    if (this.#_policyEngineAttached) {
+      throw new Error('SessionContext: Policy engine already attached (immutability violation)');
+    }
+
+    this.#_policyEngine = engine;
+    this.#_policyEngineAttached = true;
+
+    logger.info({
+      sessionId: this._sessionId,
+      attached: true,
+    }, 'SessionContext: Policy engine attached');
+  }
+
+  /**
+   * Get policy engine (read-only)
+   *
+   * @returns {DBPolicyEngine | undefined} Policy engine or undefined
+   */
+  getPolicyEngine() {
+    this.assertBound();
+    return this.#_policyEngineAttached ? this.#_policyEngine : undefined;
+  }
+
+  /**
+   * Backward-compatible accessor for boundary enforcement.
+   *
+   * @returns {DBPolicyEngine | undefined}
+   */
+  get policyEngine() {
+    return this.#_policyEngine;
   }
 
   /**

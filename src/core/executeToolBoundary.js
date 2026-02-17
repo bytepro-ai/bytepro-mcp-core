@@ -1,6 +1,7 @@
 import { isValidSessionContext } from './sessionContext.js';
 import { CapabilityAction, evaluateCapability } from '../security/capabilities.js';
 import { auditLog } from '../utils/logger.js';
+import { extractTables } from '../security/queryValidator.js';
 
 /**
  * Internal canonical execution boundary
@@ -178,6 +179,69 @@ export async function executeToolBoundary(request) {
         details: { errors }
       }
     };
+  }
+
+  // 6.5. DB Policy Enforcement (if policy engine attached)
+  if (sessionContext.policyEngine && validationResult.data.query) {
+    try {
+      // Extract table names from the query
+      const tables = extractTables(validationResult.data.query);
+
+      // Enforce DB policy if tables were extracted
+      if (tables && tables.length > 0) {
+        // Determine role from capabilities or use a default
+        const role = sessionContext.capabilities?.role || 'default';
+
+        await sessionContext.policyEngine.assertAllowed({
+          tenant: sessionContext.tenant,
+          role: role,
+          tables: tables,
+          now: Date.now(),
+        });
+
+        auditLog({
+          action: 'db_policy',
+          tool: toolName,
+          identity: sessionContext.identity,
+          tenant: sessionContext.tenant,
+          tables: tables,
+          role: role,
+          decision: 'ALLOW',
+          duration: Date.now() - startTime,
+          outcome: 'success',
+        });
+      }
+    } catch (error) {
+      auditLog({
+        action: 'db_policy',
+        tool: toolName,
+        identity: sessionContext.identity,
+        tenant: sessionContext.tenant,
+        decision: 'DENY',
+        reason: error.code,
+        duration: Date.now() - startTime,
+        outcome: 'denied',
+      });
+
+      if (sessionContext.hasQuotaEngine && quotaSemaphoreKey) {
+        sessionContext.quotaEngine.release(quotaSemaphoreKey);
+      }
+
+      // Handle POLICY_DENIED errors gracefully
+      if (error.code === 'POLICY_DENIED') {
+        return {
+          ok: false,
+          error: {
+            code: 'POLICY_DENIED',
+            message: error.message,
+            details: error.details,
+          }
+        };
+      }
+
+      // Re-throw unexpected errors
+      throw error;
+    }
   }
 
   // 7. Execution
