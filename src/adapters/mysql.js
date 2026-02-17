@@ -461,7 +461,19 @@ export class MySQLAdapter extends BaseAdapter {
 
       // Set query timeout (milliseconds to seconds, rounded up)
       const timeoutSeconds = Math.ceil(timeout / 1000);
-      await connection.query(`SET SESSION max_execution_time = ${timeoutSeconds * 1000}`);
+      // Gracefully handle MySQL variants without max_execution_time support
+      try {
+        await connection.query(`SET SESSION max_execution_time = ${timeoutSeconds * 1000}`);
+      } catch (error) {
+        if (error?.code === 'ER_UNKNOWN_SYSTEM_VARIABLE') {
+          logger.warn(
+            { error: error.message },
+            'MySQL server does not support max_execution_time; continuing without session timeout'
+          );
+        } else {
+          throw error;
+        }
+      }
 
       // Execute the query
       const [rows, fields] = await connection.query(limitedQuery, params);
