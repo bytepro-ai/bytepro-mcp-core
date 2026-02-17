@@ -574,22 +574,43 @@ export class MySQLAdapter extends BaseAdapter {
       return error;
     }
 
+    // DEBUG: exposing raw MySQL error
+    logger.error(
+      {
+        rawMySQLError: {
+          code: error?.code,
+          errno: error?.errno,
+          message: error?.message,
+          sqlState: error?.sqlState,
+          stack: error?.stack,
+        },
+      },
+      'MySQLAdapter: executeQuery failed (raw)'
+    );
+
+    const rawDetails = {
+      rawCode: error?.code,
+      rawErrno: error?.errno,
+      rawMessage: error?.message,
+    };
+
     // Map MySQL error codes
     // ER_QUERY_TIMEOUT or max_execution_time exceeded
     if (error.code === 'ER_QUERY_TIMEOUT' || error.errno === 3024) {
-      return this._createError('TIMEOUT', 'Query execution timeout');
+      return this._createError('TIMEOUT', 'Query execution timeout', rawDetails);
     }
 
     // Syntax errors (1064)
     if (error.errno === 1064) {
-      return this._createError('SYNTAX_ERROR', 'SQL syntax error');
+      return this._createError('SYNTAX_ERROR', 'SQL syntax error', rawDetails);
     }
 
     // Table/column doesn't exist (1146, 1054)
     if (error.errno === 1146 || error.errno === 1054) {
       return this._createError(
         'OBJECT_NOT_FOUND',
-        'Referenced table or column not found'
+        'Referenced table or column not found',
+        rawDetails
       );
     }
 
@@ -597,12 +618,13 @@ export class MySQLAdapter extends BaseAdapter {
     if ([1142, 1143, 1370].includes(error.errno)) {
       return this._createError(
         'PERMISSION_DENIED',
-        'Access denied to requested object'
+        'Access denied to requested object',
+        rawDetails
       );
     }
 
     // Generic execution error
-    return this._createError('EXECUTION_ERROR', 'Query execution failed');
+    return this._createError('EXECUTION_ERROR', 'Query execution failed', rawDetails);
   }
 
   /**
