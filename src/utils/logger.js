@@ -3,23 +3,26 @@ import pino from 'pino';
 /**
  * Create a configured logger instance with audit metadata support
  */
-export const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  ...((process.env.LOG_PRETTY === 'true') && {
-    transport: {
-      target: 'pino-pretty',
-      options: {
-        colorize: true,
-        translateTime: 'SYS:standard',
-        ignore: 'pid,hostname',
+export const logger = pino(
+  {
+    level: process.env.LOG_LEVEL || 'info',
+    ...((process.env.LOG_PRETTY === 'true') && {
+      transport: {
+        target: 'pino-pretty',
+        options: {
+          colorize: true,
+          translateTime: 'SYS:standard',
+          ignore: 'pid,hostname',
+        },
       },
+    }),
+    base: {
+      app: process.env.APP_NAME || 'mcp-server',
+      version: process.env.APP_VERSION || '1.0.0',
     },
-  }),
-  base: {
-    app: process.env.APP_NAME || 'mcp-server',
-    version: process.env.APP_VERSION || '1.0.0',
   },
-});
+  pino.destination(2)
+);
 
 /**
  * Create an audit log entry with standardized metadata

@@ -106,7 +106,7 @@ function emitAuditLog(adapter, resultType, queryFingerprint, executionTimeMs) {
       event.executionTimeMs = Math.round(executionTimeMs / 10) * 10;
     }
 
-    console.log(JSON.stringify(event));
+    console.error(JSON.stringify(event));
   } catch (error) {
     throw new Error(`Audit logging failed: ${error.message}`);
   }
