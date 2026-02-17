@@ -65,32 +65,37 @@ export function enforceQueryPermissions(query) {
       );
     }
 
-    // Check schema allowlist first
-    if (!allowlist.isSchemaAllowed(schema)) {
-      logger.warn({ schema, table, allowedSchemas: Array.from(allowlist.allowedSchemas) }, 'Schema not in allowlist');
-      throw new PermissionError(
-        'UNAUTHORIZED_TABLE',
-        `Access denied: Schema "${schema}" is not allowed`,
-        { 
-          schema,
-          table: fullTableName,
-          hint: 'Contact administrator to request schema access'
-        }
-      );
-    }
+    // When allowAllTables is true, skip schema and table allowlist checks.
+    // SQL injection validation (queryValidator) still runs; only the schema/table
+    // allowlist membership check is relaxed.
+    if (!allowlist.allowAllTables) {
+      // Check schema allowlist first
+      if (!allowlist.isSchemaAllowed(schema)) {
+        logger.warn({ schema, table, allowedSchemas: Array.from(allowlist.allowedSchemas) }, 'Schema not in allowlist');
+        throw new PermissionError(
+          'UNAUTHORIZED_TABLE',
+          `Access denied: Schema "${schema}" is not allowed`,
+          { 
+            schema,
+            table: fullTableName,
+            hint: 'Contact administrator to request schema access'
+          }
+        );
+      }
 
-    // Check table allowlist
-    if (!allowlist.isTableAllowed(schema, table)) {
-      logger.warn({ schema, table, allowedTables: Array.from(allowlist.allowedTables) }, 'Table not in allowlist');
-      throw new PermissionError(
-        'UNAUTHORIZED_TABLE',
-        `Access denied: Table "${fullTableName}" is not allowed`,
-        { 
-          schema,
-          table: fullTableName,
-          hint: 'Contact administrator to request table access'
-        }
-      );
+      // Check table allowlist
+      if (!allowlist.isTableAllowed(schema, table)) {
+        logger.warn({ schema, table, allowedTables: Array.from(allowlist.allowedTables) }, 'Table not in allowlist');
+        throw new PermissionError(
+          'UNAUTHORIZED_TABLE',
+          `Access denied: Table "${fullTableName}" is not allowed`,
+          { 
+            schema,
+            table: fullTableName,
+            hint: 'Contact administrator to request table access'
+          }
+        );
+      }
     }
 
     // Track validated references
