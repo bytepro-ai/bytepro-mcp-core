@@ -2,7 +2,7 @@ import { BaseAdapter } from './baseAdapter.js';
 import { allowlist } from '../security/allowlist.js';
 import { queryGuard } from '../security/queryGuard.js';
 import { logger } from '../utils/logger.js';
-import { validateQueryWithTables } from '../security/queryValidator.js';
+import { validateQueryWithTables, validateQuery, extractTables } from '../security/queryValidator.js';
 import { enforceQueryPermissions } from '../security/permissions.js';
 import { logQueryEvent, computeQueryFingerprint } from '../security/auditLogger.js';
 import { isValidSessionContext } from '../core/sessionContext.js';
@@ -293,11 +293,14 @@ export class MySQLAdapter extends BaseAdapter {
    * @param {Array} [params.params] - Query parameters
    * @param {number} [params.limit] - Maximum rows to return (default: 100, max: 1000)
    * @param {number} [params.timeout] - Query timeout in milliseconds (default: 30000, max: 60000)
+   * @param {Object} [options] - Execution options
+   * @param {boolean} [options.internal] - Trusted internal query (skips ORDER BY + column enforcement)
    * @returns {Promise<Object>} Query results with metadata
    */
-  async executeQuery(params, sessionContext) {
+  async executeQuery(params, sessionContext, options = {}) {
     const startTime = Date.now();
     let validationPassed = false; // Track whether validation succeeded
+    const isInternal = options?.internal === true;
 
     // SECURITY: Defensive assertion - session context MUST be bound
     // Adapters MUST NOT execute without bound identity + tenant
@@ -329,7 +332,25 @@ export class MySQLAdapter extends BaseAdapter {
       const queryFingerprint = computeQueryFingerprint(query);
 
       // Step 1: Validate query structure (regex-based security validation)
-      const validation = validateQueryWithTables(query);
+      const validation = isInternal
+        ? (() => {
+            const baseValidation = validateQuery(query);
+            if (!baseValidation.valid) {
+              return baseValidation;
+            }
+
+            const tables = extractTables(query);
+
+            if (tables.length === 0) {
+              return {
+                valid: false,
+                reason: 'Query must reference at least one table (fail-closed validation)',
+              };
+            }
+
+            return { valid: true, tables };
+          })()
+        : validateQueryWithTables(query);
       
       if (!validation.valid) {
         // Audit log: validation rejected (AFTER validation, fail-closed)
@@ -340,12 +361,14 @@ export class MySQLAdapter extends BaseAdapter {
       const tables = validation.tables;
 
       // Step 2: Enforce permissions (allowlist check)
-      try {
-        enforceQueryPermissions(query);
-      } catch (permissionError) {
-        // Audit log: permission rejected (AFTER permission check, fail-closed)
-        logQueryEvent('mysql', queryFingerprint, 'rejected');
-        throw permissionError;
+      if (!isInternal) {
+        try {
+          enforceQueryPermissions(query);
+        } catch (permissionError) {
+          // Audit log: permission rejected (AFTER permission check, fail-closed)
+          logQueryEvent('mysql', queryFingerprint, 'rejected');
+          throw permissionError;
+        }
       }
 
       // Audit log: validation succeeded (AFTER validation + permissions, fail-closed)

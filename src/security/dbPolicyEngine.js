@@ -246,7 +246,8 @@ export class DBPolicyEngine {
 
       const result = await this.adapter.executeQuery(
         { query: normalizedQuery, params: [] },
-        this.sessionContext
+        this.sessionContext,
+        { internal: true }
       );
 
       // Clear existing policies
