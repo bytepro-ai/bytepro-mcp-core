@@ -234,8 +234,11 @@ export class DBPolicyEngine {
         ORDER BY tenant_id, role, table_name
       `;
 
+      // Normalize internal SQL to avoid control-character rejection
+      const normalizedQuery = query.replace(/\s+/g, ' ').trim();
+
       const result = await this.adapter.executeQuery(
-        { query, params: [] },
+        { query: normalizedQuery, params: [] },
         this.sessionContext
       );
 
