@@ -222,6 +222,13 @@ export class DBPolicyEngine {
     const startTime = Date.now();
 
     try {
+      // Use schema-qualified table name to satisfy adapter validation
+      const database = this.adapter?.config?.database;
+      if (!database) {
+        throw new Error('DBPolicyEngine: Adapter config missing database for policy loading');
+      }
+      const policyTable = `${database}.ai_db_policies`;
+
       const query = `
         SELECT 
           tenant_id,
@@ -230,7 +237,7 @@ export class DBPolicyEngine {
           allowed,
           start_time,
           end_time
-        FROM ai_db_policies
+        FROM ${policyTable}
         ORDER BY tenant_id, role, table_name
       `;
 
