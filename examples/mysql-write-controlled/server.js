@@ -6,7 +6,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { createLogger } from '../../src/utils/logger.js';
-import { adapterRegistry } from '../../src/adapters/adapterRegistry.js';
+import { createAdapterRegistry } from '../../src/adapters/adapterRegistry.js';
 import { createSessionContextFromEnv } from '../../src/core/sessionContext.js';
 import { loadCapabilitiesFromEnv } from '../../src/security/capabilities.js';
 import { loadQuotaEngineFromEnv } from '../../src/security/quotas.js';
@@ -18,6 +18,7 @@ import { ToolRegistry } from '../../src/core/toolRegistry.js';
 import { addCustomerTool } from './tools/addCustomer.js';
 
 const logger = createLogger();
+const adapterRegistry = createAdapterRegistry();
 
 /**
  * Write-Enabled MCP Server Example

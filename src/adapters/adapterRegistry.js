@@ -106,7 +106,6 @@ export class AdapterRegistry {
   }
 }
 
-// Export singleton instance
-export const adapterRegistry = new AdapterRegistry();
-
-export default adapterRegistry;
+export function createAdapterRegistry() {
+  return new AdapterRegistry();
+}

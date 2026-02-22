@@ -1,0 +1,25 @@
+---
+alwaysApply: true
+---
+
+This repository implements a deterministic AI governance runtime.
+
+The following rules MUST NEVER be violated:
+
+1. No implicit allow behavior.
+2. Deny must dominate within the same priority tier.
+3. Resolution must be deterministic and order-independent.
+4. No policy decision may depend on database row order.
+5. Fail-closed behavior is mandatory:
+   - No matching policy => DENY
+   - Policy engine failure => DENY
+6. No import-time side effects:
+   - No server auto-start
+   - No process lifecycle ownership
+   - No dotenv mutation on import
+7. No new features during hardening phase.
+8. Do not modify executeToolBoundary.
+9. Do not weaken tenant isolation.
+10. All refactors must preserve semantics and pass tests.
+
+This phase focuses on structural clarity and deterministic resolution only.

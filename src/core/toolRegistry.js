@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createLogger, auditLog } from '../utils/logger.js';
-import { adapterRegistry } from '../adapters/adapterRegistry.js';
+import { createAdapterRegistry } from '../adapters/adapterRegistry.js';
 import * as responseFormatter from './responseFormatter.js';
 import { isValidSessionContext } from './sessionContext.js';
 import { CapabilityAction, evaluateCapability } from '../security/capabilities.js';
@@ -12,6 +12,7 @@ import { describeTableTool } from '../tools/describeTable.js';
 import { queryReadTool } from '../tools/queryRead.js';
 
 const logger = createLogger();
+const adapterRegistry = createAdapterRegistry();
 
 /**
  * Tool registry for managing and executing MCP tools

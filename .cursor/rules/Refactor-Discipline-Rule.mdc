@@ -1,0 +1,16 @@
+---
+alwaysApply: true
+---
+
+During hardening phase:
+
+- Do not introduce new external APIs.
+- Do not modify adapter behavior.
+- Do not introduce speculative abstractions.
+- Do not split modules unless the resolution pipeline is finalized.
+- Refactors must be structural only.
+- Behavior must remain identical unless explicitly approved.
+- All changes must pass full test suite.
+
+Cursor must not invent policy semantics.
+Cursor only restructures existing logic.

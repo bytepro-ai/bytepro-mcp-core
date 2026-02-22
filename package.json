@@ -17,7 +17,6 @@
   },
   "sideEffects": [
     "./src/security/queryGuard.js",
-    "./src/adapters/adapterRegistry.js",
     "./src/utils/pgPool.js",
     "./src/core/toolRegistry.js"
   ],

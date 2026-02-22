@@ -314,20 +314,17 @@ export class DBPolicyEngine {
   /**
    * Deterministic resolution algorithm (v2).
    *
-   * This is a pure function over the provided row array. It does not access
-   * the database, the cache, or any external state. Given the same inputs it
-   * always produces the same output regardless of row order.
+   * Orchestrates the five pipeline steps in strict order. Pure function over
+   * the provided row array: no database access, no cache access, no external
+   * state. Given identical inputs always produces identical output regardless
+   * of row order.
    *
-   * Algorithm steps:
-   *   1. Active filter:    retain rows where is_active = true
-   *      → empty → { allowed: false, reason: NO_ACTIVE_POLICY }
-   *   2. Version dedup:    per priority group, retain max(version) row only
-   *   3. Time filter:      retain rows whose time window includes nowMs
-   *      → empty → { allowed: false, reason: TIME_WINDOW }
-   *                 (or NO_ACTIVE_POLICY if dedup set was already empty)
-   *   4. Priority tier:    find max(priority); keep only rows at that level
-   *   5. Deny dominance:   if any row in tier has effect='deny' → TABLE_DENIED
-   *   6. Allow:            all rows in tier have effect='allow' → ALLOW
+   * Pipeline (mirrors docs/architecture/deterministic-resolution-v1.md §4):
+   *   1. _filterActive          → retain is_active=true rows
+   *   2. _deduplicateByVersion  → per priority group, retain max(version) peers
+   *   3. _filterByTimeWindow    → retain rows within UTC time window
+   *   4. _selectHighestPriorityTier → keep only the max-priority rows
+   *   5. _applyDenyDominance    → deny if any row in tier is 'deny'; else allow
    *
    * Invariants satisfied:
    *   I-2  Fail-closed       (empty at any stage → DENY)
@@ -345,70 +342,135 @@ export class DBPolicyEngine {
    */
   _resolve(rows, nowMs) {
     // Step 1 — Active filter (I-2, I-7)
-    const active = rows.filter(p => p.is_active === true);
+    const active = this._filterActive(rows);
     if (active.length === 0) {
       return { allowed: false, reason: PolicyDenialReason.NO_ACTIVE_POLICY, winningPriority: null };
     }
 
     // Step 2 — Version deduplication per priority group (I-6)
-    // For each priority level, keep only the row with the highest version.
-    const byPriority = new Map();
-    for (const p of active) {
-      const existing = byPriority.get(p.priority);
-      if (!existing || p.version > existing.version) {
-        byPriority.set(p.priority, p);
-      }
-    }
-    // byPriority now contains at most one row per priority level.
-    // Multiple rows at the same priority but different versions are collapsed
-    // to the newest. Multiple rows at the same priority AND version (possible
-    // in test fixtures or if the UNIQUE constraint isn't enforced) are handled
-    // by step 5's deny dominance after step 4 re-expands from the original
-    // active set — see note below.
-    //
-    // Note: to preserve deny dominance for rows at same (priority, version),
-    // we do NOT use a single-winner per priority. Instead, after version dedup
-    // we re-include all active rows that share the canonical version at each
-    // priority level. This correctly handles the case where two rows share the
-    // same (priority, version) but differ in effect (deny dominance applies).
-    const dedupedByPriority = new Map();
-    for (const [priority, canonical] of byPriority) {
-      // Keep all active rows whose (priority, version) matches the canonical
-      const peers = active.filter(
-        p => p.priority === priority && p.version === canonical.version
-      );
-      dedupedByPriority.set(priority, peers);
-    }
+    const deduped = this._deduplicateByVersion(active);
 
     // Step 3 — Time validity filter (I-7)
-    const currentTime = this._getUTCTimeString(nowMs);
-    const timeValidByPriority = new Map();
-    for (const [priority, peers] of dedupedByPriority) {
-      const valid = peers.filter(p =>
-        this._isWithinTimeWindow(currentTime, p.start_time, p.end_time)
-      );
-      if (valid.length > 0) {
-        timeValidByPriority.set(priority, valid);
-      }
-    }
-
-    if (timeValidByPriority.size === 0) {
-      // Rows existed but none passed time filter
+    const timeValid = this._filterByTimeWindow(deduped, nowMs);
+    if (timeValid.length === 0) {
       return { allowed: false, reason: PolicyDenialReason.TIME_WINDOW, winningPriority: null };
     }
 
     // Step 4 — Priority stratification (I-4)
-    const maxPriority = Math.max(...timeValidByPriority.keys());
-    const tier = timeValidByPriority.get(maxPriority);
+    const tier = this._selectHighestPriorityTier(timeValid);
 
-    // Step 5 — Deny dominance within tier (I-3, I-8)
-    const hasDeny = tier.some(p => p.effect === 'deny');
-    if (hasDeny) {
-      return { allowed: false, reason: PolicyDenialReason.TABLE_DENIED, winningPriority: maxPriority };
+    // Steps 5 & 6 — Deny dominance and allow (I-3, I-8)
+    return this._applyDenyDominance(tier);
+  }
+
+  /**
+   * Step 1 — Active filter.
+   *
+   * Retains only rows where is_active === true. Rows with is_active=false are
+   * soft-deactivated and must never participate in resolution. Pure; does not
+   * mutate the input array.
+   *
+   * @param {Object[]} rows - All cached rows for a (tenant, role, table) key
+   * @returns {Object[]} Rows where is_active === true
+   * @private
+   */
+  _filterActive(rows) {
+    return rows.filter(p => p.is_active === true);
+  }
+
+  /**
+   * Step 2 — Version deduplication per priority group.
+   *
+   * For each distinct priority level, identifies the canonical version:
+   * max(version) over all rows at that priority. Then retains every row whose
+   * (priority, version) matches (priority, canonicalVersion). Rows at the same
+   * priority but a lower version are discarded.
+   *
+   * Rows sharing the same (priority, canonicalVersion) but differing in effect
+   * are all retained so that deny dominance (Step 5) can resolve them.
+   *
+   * Pure; does not mutate the input array. Input must be the active-only set
+   * produced by _filterActive.
+   *
+   * @param {Object[]} rows - Active policy rows
+   * @returns {Object[]} Deduplicated rows (flat array, one or more per priority)
+   * @private
+   */
+  _deduplicateByVersion(rows) {
+    // Pass 1: find canonical version (max) per priority group
+    const canonicalVersion = new Map();
+    for (const p of rows) {
+      const current = canonicalVersion.get(p.priority);
+      if (current === undefined || p.version > current) {
+        canonicalVersion.set(p.priority, p.version);
+      }
     }
 
-    // Step 6 — Allow (I-8: all rows in tier are 'allow')
-    return { allowed: true, reason: null, winningPriority: maxPriority };
+    // Pass 2: retain all rows whose (priority, version) matches the canonical
+    return rows.filter(p => canonicalVersion.get(p.priority) === p.version);
+  }
+
+  /**
+   * Step 3 — Time validity filter.
+   *
+   * Retains only rows whose UTC time window includes the instant represented
+   * by nowMs. Rows with no time bounds (start_time=null, end_time=null) always
+   * pass. Midnight-crossing windows are handled by _isWithinTimeWindow.
+   *
+   * Pure; does not mutate the input array.
+   *
+   * @param {Object[]} rows - Deduplicated rows from _deduplicateByVersion
+   * @param {number} nowMs  - Current UTC timestamp (Date.now())
+   * @returns {Object[]} Rows whose time window includes nowMs
+   * @private
+   */
+  _filterByTimeWindow(rows, nowMs) {
+    const currentTime = this._getUTCTimeString(nowMs);
+    return rows.filter(p => this._isWithinTimeWindow(currentTime, p.start_time, p.end_time));
+  }
+
+  /**
+   * Step 4 — Priority stratification.
+   *
+   * Finds the maximum priority value present in the input and returns only the
+   * rows at that priority level. All lower-priority rows are discarded. The
+   * winning tier is absolute: no row below max(priority) participates in the
+   * deny-dominance decision.
+   *
+   * Pure; does not mutate the input array. Input must be non-empty (caller
+   * checks timeValid.length === 0 before calling this method).
+   *
+   * @param {Object[]} rows - Time-valid rows from _filterByTimeWindow
+   * @returns {Object[]} Rows at max(priority) only
+   * @private
+   */
+  _selectHighestPriorityTier(rows) {
+    const maxPriority = Math.max(...rows.map(p => p.priority));
+    return rows.filter(p => p.priority === maxPriority);
+  }
+
+  /**
+   * Steps 5 & 6 — Deny dominance and allow.
+   *
+   * Applies deny dominance within the winning tier: if any row has
+   * effect='deny', the result is DENY (TABLE_DENIED) regardless of how many
+   * allow rows are present. Only if all rows have effect='allow' is the result
+   * ALLOW.
+   *
+   * Pure; does not mutate the input array. Input is the winning tier produced
+   * by _selectHighestPriorityTier and is guaranteed non-empty.
+   *
+   * @param {Object[]} tier - Rows at the highest priority tier
+   * @returns {{ allowed: boolean, reason: string|null, winningPriority: number }}
+   * @private
+   */
+  _applyDenyDominance(tier) {
+    const winningPriority = tier[0].priority;
+    const hasDeny = tier.some(p => p.effect === 'deny');
+    if (hasDeny) {
+      return { allowed: false, reason: PolicyDenialReason.TABLE_DENIED, winningPriority };
+    }
+    return { allowed: true, reason: null, winningPriority };
   }
 
   /**

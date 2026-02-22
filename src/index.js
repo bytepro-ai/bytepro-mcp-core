@@ -17,7 +17,7 @@ export { executeToolBoundary } from './core/executeToolBoundary.js';
 export { ToolRegistry } from './core/toolRegistry.js';
 
 // Adapter registry
-export { AdapterRegistry } from './adapters/adapterRegistry.js';
+export { AdapterRegistry, createAdapterRegistry } from './adapters/adapterRegistry.js';
 
 // Base adapter (for custom adapter implementations)
 export { BaseAdapter } from './adapters/baseAdapter.js';
