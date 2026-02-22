@@ -1,6 +1,6 @@
 {
   "name": "@bytepro/mcp-core",
-  "version": "0.1.10",
+  "version": "0.2.0",
   "description": "Security-first library for building Model Context Protocol servers with database adapters and tool execution boundaries.",
   "type": "module",
   "main": "src/index.js",
