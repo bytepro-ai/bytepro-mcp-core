@@ -1,4 +1,6 @@
-import { logger } from '../utils/logger.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger();
 
 /**
  * Query guard to enforce security rules on SQL queries

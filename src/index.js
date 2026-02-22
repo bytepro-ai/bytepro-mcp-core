@@ -44,11 +44,11 @@ export {
 } from './security/quotas.js';
 
 // Configuration utilities
-export { loadConfig, getConfig } from './config/env.js';
+export { loadEnv, loadConfig, getConfig } from './config/env.js';
 export { configSchema, validateConfig } from './config/schema.js';
 
 // Security primitives (for custom tool implementations)
-export { allowlist } from './security/allowlist.js';
+export { Allowlist, createAllowlist } from './security/allowlist.js';
 export { queryGuard } from './security/queryGuard.js';
 export { validateQueryWithTables } from './security/queryValidator.js';
 export { enforceQueryPermissions, PermissionError } from './security/permissions.js';
@@ -56,7 +56,7 @@ export { logQueryEvent, computeQueryFingerprint } from './security/auditLogger.j
 export { DBPolicyEngine } from './security/dbPolicyEngine.js';
 
 // Utilities
-export { logger } from './utils/logger.js';
+export { createLogger } from './utils/logger.js';
 // pgPool singleton is intentionally NOT exported here (PG-specific; has side effects).
 // Applications that need graceful shutdown integration should import explicitly:
 //   import { pgPool, registerPgPoolShutdownHandlers } from '@bytepro/mcp-core/pg-pool'

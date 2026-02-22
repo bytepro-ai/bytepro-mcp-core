@@ -1,12 +1,15 @@
 import { BaseAdapter } from './baseAdapter.js';
 import { pgPool } from '../utils/pgPool.js';
-import { allowlist } from '../security/allowlist.js';
+import { createAllowlist } from '../security/allowlist.js';
 import { queryGuard } from '../security/queryGuard.js';
-import { logger } from '../utils/logger.js';
+import { createLogger } from '../utils/logger.js';
 import { validateQueryWithTables } from '../security/queryValidator.js';
 import { enforceQueryPermissions } from '../security/permissions.js';
 import { logQueryEvent, computeQueryFingerprint } from '../security/auditLogger.js';
 import { isValidSessionContext } from '../core/sessionContext.js';
+
+const logger = createLogger();
+const allowlist = createAllowlist();
 
 /**
  * PostgreSQL adapter implementation

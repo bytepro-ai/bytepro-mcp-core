@@ -6,9 +6,12 @@
  * Throws structured MCP errors on violations.
  */
 
-import { allowlist } from './allowlist.js';
+import { createAllowlist } from './allowlist.js';
 import { extractTables } from './queryValidator.js';
-import { logger } from '../utils/logger.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger();
+const allowlist = createAllowlist();
 
 /**
  * Permission error class for structured MCP error responses

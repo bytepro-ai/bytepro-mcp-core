@@ -16,8 +16,10 @@
     "./package.json": "./package.json"
   },
   "sideEffects": [
-    "./src/security/allowlist.js",
-    "./src/utils/logger.js"
+    "./src/security/queryGuard.js",
+    "./src/adapters/adapterRegistry.js",
+    "./src/utils/pgPool.js",
+    "./src/core/toolRegistry.js"
   ],
   "files": [
     "src/adapters/**/*.js",
@@ -39,8 +41,6 @@
     "CONTRIBUTING.md"
   ],
   "scripts": {
-    "dev": "nodemon src/core/server.js",
-    "start": "node src/core/server.js",
     "lint": "eslint src/",
     "format": "prettier --write src/",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand",

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { logger, auditLog } from '../utils/logger.js';
+import { createLogger, auditLog } from '../utils/logger.js';
 import { adapterRegistry } from '../adapters/adapterRegistry.js';
 import * as responseFormatter from './responseFormatter.js';
 import { isValidSessionContext } from './sessionContext.js';
@@ -10,6 +10,8 @@ import { QuotaDenialReason } from '../security/quotas.js';
 import { listTablesTool } from '../tools/listTables.js';
 import { describeTableTool } from '../tools/describeTable.js';
 import { queryReadTool } from '../tools/queryRead.js';
+
+const logger = createLogger();
 
 /**
  * Tool registry for managing and executing MCP tools

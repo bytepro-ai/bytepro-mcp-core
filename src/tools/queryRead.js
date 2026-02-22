@@ -1,6 +1,8 @@
 import { z } from 'zod';
-import { logger } from '../utils/logger.js';
+import { createLogger } from '../utils/logger.js';
 import { isValidSessionContext } from '../core/sessionContext.js';
+
+const logger = createLogger();
 
 /**
  * Query Read Tool

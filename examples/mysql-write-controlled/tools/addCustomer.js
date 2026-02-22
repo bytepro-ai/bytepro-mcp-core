@@ -1,6 +1,8 @@
 import { z } from 'zod';
-import { logger } from '../../../src/utils/logger.js';
+import { createLogger } from '../../../src/utils/logger.js';
 import { isValidSessionContext } from '../../../src/core/sessionContext.js';
+
+const logger = createLogger();
 
 /**
  * Add Customer Tool (Write-Enabled)

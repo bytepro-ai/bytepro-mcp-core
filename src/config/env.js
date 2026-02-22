@@ -1,12 +1,22 @@
 import dotenv from 'dotenv';
 import { validateConfig } from './schema.js';
 
-// Load .env file
-dotenv.config();
+/**
+ * Explicitly load a .env file into process.env.
+ * Must be called by the consuming application before any configuration is read.
+ * Never called automatically — libraries must not mutate process.env on import.
+ *
+ * @param {string} [path] - Optional path to a specific .env file. Defaults to .env in cwd.
+ * @returns {import('dotenv').DotenvConfigOutput}
+ */
+export function loadEnv(path) {
+  return dotenv.config(path ? { path } : undefined);
+}
 
 /**
- * Load and validate configuration from environment variables
- * Fails fast on invalid configuration
+ * Load and validate configuration from environment variables.
+ * Fails fast on invalid configuration.
+ * Call loadEnv() first if you need values sourced from a .env file.
  */
 export function loadConfig() {
   const rawConfig = {

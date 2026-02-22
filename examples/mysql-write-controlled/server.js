@@ -5,7 +5,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 
-import { logger } from '../../src/utils/logger.js';
+import { createLogger } from '../../src/utils/logger.js';
 import { adapterRegistry } from '../../src/adapters/adapterRegistry.js';
 import { createSessionContextFromEnv } from '../../src/core/sessionContext.js';
 import { loadCapabilitiesFromEnv } from '../../src/security/capabilities.js';
@@ -16,6 +16,8 @@ import { ToolRegistry } from '../../src/core/toolRegistry.js';
 
 // Import write-enabled tool
 import { addCustomerTool } from './tools/addCustomer.js';
+
+const logger = createLogger();
 
 /**
  * Write-Enabled MCP Server Example

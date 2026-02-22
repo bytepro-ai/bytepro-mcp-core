@@ -1,11 +1,14 @@
 import { BaseAdapter } from './baseAdapter.js';
-import { logger } from '../utils/logger.js';
+import { createLogger } from '../utils/logger.js';
 import { isValidSessionContext } from '../core/sessionContext.js';
-import { allowlist } from '../security/allowlist.js';
+import { createAllowlist } from '../security/allowlist.js';
 import { queryGuard } from '../security/queryGuard.js';
 import { validateQueryWithTables } from '../security/queryValidator.js';
 import { enforceQueryPermissions } from '../security/permissions.js';
 import { logQueryEvent, computeQueryFingerprint } from '../security/auditLogger.js';
+
+const logger = createLogger();
+const allowlist = createAllowlist();
 
 export class MSSQLAdapter extends BaseAdapter {
   constructor(config) {

@@ -17,7 +17,9 @@ import { executeToolBoundary } from '../core/executeToolBoundary.js';
 import { SessionContext, isValidSessionContext, createSessionContextFromEnv } from '../core/sessionContext.js';
 import { QuotaEngine, loadQuotaEngineFromEnv, createDefaultQuotaEngine } from '../security/quotas.js';
 import { CapabilitySet } from '../security/capabilities.js';
-import { logger } from '../utils/logger.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger();
 
 export function createMySQLMCPServer(options) {
   // Validate required parameters

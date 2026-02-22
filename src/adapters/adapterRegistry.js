@@ -1,7 +1,9 @@
 import { PostgresAdapter } from './postgres.js';
 import { MySQLAdapter } from './mysql.js';
 import { MSSQLAdapter } from './mssql.js';
-import { logger } from '../utils/logger.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger();
 
 /**
  * Adapter registry for managing database adapters

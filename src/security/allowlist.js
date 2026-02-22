@@ -1,22 +1,36 @@
-import { logger } from '../utils/logger.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger();
 
 /**
- * Allowlist enforcement for database access control
- * Validates schema and table access against configured allowlists
+ * Parse a comma-separated environment variable string into a trimmed, non-empty array.
+ * @param {string} value
+ * @returns {string[]}
+ */
+function parseList(value) {
+  return (value || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+/**
+ * Allowlist enforcement for database access control.
+ * Validates schema and table access against explicitly provided allowlists.
+ *
+ * Configuration is passed explicitly via the constructor — never read from
+ * process.env here. Use createAllowlist() to build an instance from environment
+ * variables.
  */
 export class Allowlist {
-  constructor() {
-    const allowlistSchemas = (process.env.ALLOWLIST_SCHEMAS || '')
-      .split(',')
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
-    const allowlistTables = (process.env.ALLOWLIST_TABLES || '')
-      .split(',')
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
-    
-    this.allowedSchemas = new Set(allowlistSchemas);
-    this.allowedTables = new Set(allowlistTables);
+  /**
+   * @param {Object} [config]
+   * @param {string[]} [config.schemas] - Allowed schema names
+   * @param {string[]} [config.tables]  - Allowed table names (bare or schema.table)
+   */
+  constructor({ schemas = [], tables = [] } = {}) {
+    this.allowedSchemas = new Set(schemas);
+    this.allowedTables = new Set(tables);
     this.allowAllTables = this.allowedTables.size === 0; // Empty list means allow all tables
 
     logger.info(
@@ -160,7 +174,27 @@ export class Allowlist {
   }
 }
 
-// Export singleton instance
-export const allowlist = new Allowlist();
+/**
+ * Create an Allowlist instance from an explicit config object or (when no
+ * argument is provided) from the current process environment.
+ *
+ * This is the only place in the library that reads process.env for allowlist
+ * configuration. Call it explicitly; never automatically on import.
+ *
+ * @param {{ schemas?: string[], tables?: string[] }} [config]
+ * @returns {Allowlist}
+ */
+export function createAllowlist(config) {
+  if (config) {
+    return new Allowlist({
+      schemas: Array.isArray(config.schemas) ? config.schemas : parseList(config.schemas),
+      tables: Array.isArray(config.tables) ? config.tables : parseList(config.tables),
+    });
+  }
+  return new Allowlist({
+    schemas: parseList(process.env.ALLOWLIST_SCHEMAS),
+    tables: parseList(process.env.ALLOWLIST_TABLES),
+  });
+}
 
-export default allowlist;
+export default Allowlist;

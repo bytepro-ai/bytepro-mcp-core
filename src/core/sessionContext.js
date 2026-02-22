@@ -1,5 +1,7 @@
 import crypto from 'crypto';
-import { logger } from '../utils/logger.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger();
 
 // SECURITY: WeakSet to track valid SessionContext instances
 // This prevents duck-typing attacks where a fake object mimics the interface
