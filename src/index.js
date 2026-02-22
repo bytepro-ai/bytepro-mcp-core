@@ -57,7 +57,10 @@ export { DBPolicyEngine } from './security/dbPolicyEngine.js';
 
 // Utilities
 export { logger } from './utils/logger.js';
-export { pgPool } from './utils/pgPool.js';
+// pgPool singleton is intentionally NOT exported here (PG-specific; has side effects).
+// Applications that need graceful shutdown integration should import explicitly:
+//   import { pgPool, registerPgPoolShutdownHandlers } from '@bytepro/mcp-core/pg-pool'
+export { registerPgPoolShutdownHandlers } from './utils/pgPool.js';
 
 // Response formatting
 export { success as formatSuccess, error as formatError, ErrorCodes, fromError } from './core/responseFormatter.js';

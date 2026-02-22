@@ -122,7 +122,10 @@ class MCPServer {
             sessionId: this.sessionContext.sessionId,
           }, 'DBPolicyEngine enabled and attached to session');
         } catch (error) {
-          logger.error({ error: error.message }, 'DBPolicyEngine initialization failed; continuing without DB policy enforcement');
+          // SECURITY: When ENABLE_DB_POLICY=true, a failed init must be fatal.
+          // Silently continuing without enforcement violates fail-closed (Hard Prohibition D).
+          logger.fatal({ error: error.message }, 'FATAL: DBPolicyEngine initialization failed (terminating)');
+          throw new Error(`DBPolicyEngine initialization failed: ${error.message}`);
         }
       }
 

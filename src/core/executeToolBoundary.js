@@ -189,8 +189,9 @@ export async function executeToolBoundary(request) {
 
       // Enforce DB policy if tables were extracted
       if (tables && tables.length > 0) {
-        // Determine role from capabilities or use a default
-        const role = sessionContext.capabilities?.role || 'default';
+        // Role is sourced from sessionContext (set at bind time from MCP_SESSION_IDENTITY).
+        // sessionContext.capabilities?.role is always undefined — CapabilitySet has no .role property.
+        const role = sessionContext.role || 'default';
 
         await sessionContext.policyEngine.assertAllowed({
           tenant: sessionContext.tenant,

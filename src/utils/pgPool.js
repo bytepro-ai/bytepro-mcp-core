@@ -311,20 +311,26 @@ class PostgresPool {
   }
 }
 
-// Export singleton instance
+// Export singleton instance — does NOT register signal handlers (library must not own process lifecycle)
 export const pgPool = new PostgresPool();
 
-// Handle graceful shutdown on process termination
-process.on('SIGTERM', async () => {
-  logger.info('SIGTERM received, shutting down gracefully');
-  await pgPool.shutdown();
-  process.exit(0);
-});
+/**
+ * Register graceful shutdown handlers for the pgPool singleton.
+ * Must be called explicitly by the consuming application, never by the library on import.
+ * @returns {void}
+ */
+export function registerPgPoolShutdownHandlers() {
+  process.on('SIGTERM', async () => {
+    logger.info('SIGTERM received, shutting down gracefully');
+    await pgPool.shutdown();
+    process.exit(0);
+  });
 
-process.on('SIGINT', async () => {
-  logger.info('SIGINT received, shutting down gracefully');
-  await pgPool.shutdown();
-  process.exit(0);
-});
+  process.on('SIGINT', async () => {
+    logger.info('SIGINT received, shutting down gracefully');
+    await pgPool.shutdown();
+    process.exit(0);
+  });
+}
 
 export default pgPool;
