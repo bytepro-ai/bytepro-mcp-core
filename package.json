@@ -1,6 +1,6 @@
 {
   "name": "@bytepro/mcp-core",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Security-first library for building Model Context Protocol servers with database adapters and tool execution boundaries.",
   "type": "module",
   "main": "src/index.js",
@@ -15,11 +15,7 @@
     "./pg-pool": "./src/utils/pgPool.js",
     "./package.json": "./package.json"
   },
-  "sideEffects": [
-    "./src/security/queryGuard.js",
-    "./src/utils/pgPool.js",
-    "./src/core/toolRegistry.js"
-  ],
+  "sideEffects": false,
   "files": [
     "src/adapters/**/*.js",
     "src/config/**/*.js",
@@ -34,6 +30,7 @@
     "migrations/**/*.sql",
     "examples/**/*.js",
     "examples/**/*.md",
+    "INIT_ORDER.md",
     "README.md",
     "LICENSE",
     "SECURITY.md",

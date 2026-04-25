@@ -1,6 +1,6 @@
 import { BaseAdapter } from './baseAdapter.js';
 import { createAllowlist } from '../security/allowlist.js';
-import { queryGuard } from '../security/queryGuard.js';
+import { getQueryGuard } from '../security/queryGuard.js';
 import { createLogger } from '../utils/logger.js';
 import { validateQueryWithTables, validateQuery, extractTables } from '../security/queryValidator.js';
 import { enforceQueryPermissions } from '../security/permissions.js';
@@ -215,7 +215,7 @@ export class MySQLAdapter extends BaseAdapter {
         allowlist.isTableAllowed(row.schema, row.name)
       );
 
-      tables = queryGuard.limitTables(tables);
+      tables = getQueryGuard().limitTables(tables);
 
       this.logOperation('listTables', params, startTime, tables);
 
@@ -278,7 +278,7 @@ export class MySQLAdapter extends BaseAdapter {
       }
 
       // Apply column limit
-      let columns = queryGuard.limitColumns(rows);
+      let columns = getQueryGuard().limitColumns(rows);
 
       this.logOperation('describeTable', params, startTime, columns);
 

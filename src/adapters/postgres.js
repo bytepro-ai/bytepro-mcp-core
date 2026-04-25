@@ -1,7 +1,7 @@
 import { BaseAdapter } from './baseAdapter.js';
-import { pgPool } from '../utils/pgPool.js';
+import { getPgPool } from '../utils/pgPool.js';
 import { createAllowlist } from '../security/allowlist.js';
-import { queryGuard } from '../security/queryGuard.js';
+import { getQueryGuard } from '../security/queryGuard.js';
 import { createLogger } from '../utils/logger.js';
 import { validateQueryWithTables } from '../security/queryValidator.js';
 import { enforceQueryPermissions } from '../security/permissions.js';
@@ -31,6 +31,7 @@ export class PostgresAdapter extends BaseAdapter {
     }
 
     try {
+      const pgPool = getPgPool();
       this.pool = pgPool.initialize();
       const health = await pgPool.health();
 
@@ -55,7 +56,7 @@ export class PostgresAdapter extends BaseAdapter {
     }
 
     try {
-      await pgPool.shutdown();
+      await getPgPool().shutdown();
       this.connected = false;
       logger.info('PostgreSQL adapter disconnected');
     } catch (error) {
@@ -68,7 +69,7 @@ export class PostgresAdapter extends BaseAdapter {
    * Health check
    */
   async health() {
-    return await pgPool.health();
+    return await getPgPool().health();
   }
 
   /**
@@ -134,12 +135,12 @@ export class PostgresAdapter extends BaseAdapter {
       }
 
       // Execute query
-      const result = await pgPool.query(query, queryParams);
+      const result = await getPgPool().query(query, queryParams);
 
       // Filter by allowlist and apply limits
       let tables = result.rows.filter((row) => allowlist.isTableAllowed(row.schema, row.name));
 
-      tables = queryGuard.limitTables(tables);
+      tables = getQueryGuard().limitTables(tables);
 
       this.logOperation('listTables', params, startTime, tables);
 
@@ -209,14 +210,14 @@ export class PostgresAdapter extends BaseAdapter {
         ORDER BY c.ordinal_position;
       `;
 
-      const result = await pgPool.query(columnQuery, [schema, table]);
+      const result = await getPgPool().query(columnQuery, [schema, table]);
 
       if (result.rows.length === 0) {
         throw new Error(`Table "${schema}.${table}" not found or has no columns`);
       }
 
       // Apply column limit
-      let columns = queryGuard.limitColumns(result.rows);
+      let columns = getQueryGuard().limitColumns(result.rows);
 
       this.logOperation('describeTable', params, startTime, columns);
 
@@ -291,7 +292,7 @@ export class PostgresAdapter extends BaseAdapter {
       const normalizedTimeout = this._normalizeTimeout(timeout);
 
       // Step 4: Execute via safe read method (READ ONLY transaction, enforced LIMIT, timeout)
-      const result = await pgPool.executeSafeRead(query, queryParams, {
+      const result = await getPgPool().executeSafeRead(query, queryParams, {
         maxLimit: normalizedLimit,
         timeout: normalizedTimeout,
       });

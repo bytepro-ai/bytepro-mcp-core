@@ -2,7 +2,7 @@ import { BaseAdapter } from './baseAdapter.js';
 import { createLogger } from '../utils/logger.js';
 import { isValidSessionContext } from '../core/sessionContext.js';
 import { createAllowlist } from '../security/allowlist.js';
-import { queryGuard } from '../security/queryGuard.js';
+import { getQueryGuard } from '../security/queryGuard.js';
 import { validateQueryWithTables } from '../security/queryValidator.js';
 import { enforceQueryPermissions } from '../security/permissions.js';
 import { logQueryEvent, computeQueryFingerprint } from '../security/auditLogger.js';
@@ -184,7 +184,7 @@ export class MSSQLAdapter extends BaseAdapter {
       // Filter by allowlist and apply limits
       let tables = result.recordset.filter((row) => allowlist.isTableAllowed(row.schema, row.name));
 
-      tables = queryGuard.limitTables(tables);
+      tables = getQueryGuard().limitTables(tables);
 
       this.logOperation('listTables', params, startTime, tables);
 
@@ -262,7 +262,7 @@ export class MSSQLAdapter extends BaseAdapter {
       }
 
       // Apply column limit
-      let columns = queryGuard.limitColumns(result.recordset);
+      let columns = getQueryGuard().limitColumns(result.recordset);
 
       this.logOperation('describeTable', params, startTime, columns);
 

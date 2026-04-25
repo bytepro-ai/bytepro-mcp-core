@@ -1,15 +1,17 @@
 import pg from 'pg';
 import { createLogger } from './logger.js';
 
-const logger = createLogger();
 const { Pool } = pg;
+let pgPoolInstance = null;
 
 /**
  * PostgreSQL connection pool singleton
  * Manages connections with health checking and graceful shutdown
  */
 class PostgresPool {
-  constructor() {
+  constructor({ logger = createLogger(), poolConfig } = {}) {
+    this.logger = logger;
+    this.poolConfig = poolConfig;
     this.pool = null;
     this.isShuttingDown = false;
   }
@@ -19,45 +21,35 @@ class PostgresPool {
    */
   initialize() {
     if (this.pool) {
-      logger.warn('PostgreSQL pool already initialized');
+      this.logger.warn('PostgreSQL pool already initialized');
       return this.pool;
     }
 
-    const poolConfig = {
-      host: process.env.PG_HOST,
-      port: Number(process.env.PG_PORT) || 5432,
-      user: process.env.PG_USER,
-      password: process.env.PG_PASSWORD,
-      database: process.env.PG_DATABASE,
-      ssl: process.env.PG_SSL === 'true' ? { rejectUnauthorized: false } : false,
-      max: Number(process.env.PG_MAX_CONNECTIONS) || 10,
-      idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS) || 10000,
-      connectionTimeoutMillis: Number(process.env.PG_CONNECTION_TIMEOUT_MS) || 2000,
-    };
+    const poolConfig = this.poolConfig;
 
     this.pool = new Pool(poolConfig);
 
     // Log pool errors
     this.pool.on('error', (err) => {
-      logger.error({ err }, 'Unexpected PostgreSQL pool error');
+      this.logger.error({ err }, 'Unexpected PostgreSQL pool error');
     });
 
     // Log new client connections in debug mode
     this.pool.on('connect', () => {
-      logger.debug('New PostgreSQL client connected to pool');
+      this.logger.debug('New PostgreSQL client connected to pool');
     });
 
     // Log client removal
     this.pool.on('remove', () => {
-      logger.debug('PostgreSQL client removed from pool');
+      this.logger.debug('PostgreSQL client removed from pool');
     });
 
-    logger.info(
+    this.logger.info(
       {
-        host: process.env.PG_HOST,
-        port: Number(process.env.PG_PORT) || 5432,
-        database: process.env.PG_DATABASE,
-        maxConnections: Number(process.env.PG_MAX_CONNECTIONS) || 10,
+        host: poolConfig.host,
+        port: poolConfig.port,
+        database: poolConfig.database,
+        maxConnections: poolConfig.max,
       },
       'PostgreSQL pool initialized'
     );
@@ -91,7 +83,7 @@ class PostgresPool {
       await pool.query('SELECT 1');
       const latency = Date.now() - startTime;
 
-      logger.debug({ latency }, 'PostgreSQL health check passed');
+      this.logger.debug({ latency }, 'PostgreSQL health check passed');
 
       return {
         healthy: true,
@@ -100,7 +92,7 @@ class PostgresPool {
     } catch (error) {
       const latency = Date.now() - startTime;
 
-      logger.error({ error: error.message, latency }, 'PostgreSQL health check failed');
+      this.logger.error({ error: error.message, latency }, 'PostgreSQL health check failed');
 
       return {
         healthy: false,
@@ -116,24 +108,24 @@ class PostgresPool {
    */
   async shutdown() {
     if (this.isShuttingDown) {
-      logger.warn('PostgreSQL pool shutdown already in progress');
+      this.logger.warn('PostgreSQL pool shutdown already in progress');
       return;
     }
 
     this.isShuttingDown = true;
 
     if (!this.pool) {
-      logger.info('PostgreSQL pool not initialized, nothing to shutdown');
+      this.logger.info('PostgreSQL pool not initialized, nothing to shutdown');
       return;
     }
 
     try {
-      logger.info('Shutting down PostgreSQL pool...');
+      this.logger.info('Shutting down PostgreSQL pool...');
       await this.pool.end();
-      logger.info('PostgreSQL pool shutdown complete');
+      this.logger.info('PostgreSQL pool shutdown complete');
       this.pool = null;
     } catch (error) {
-      logger.error({ error: error.message }, 'Error during PostgreSQL pool shutdown');
+      this.logger.error({ error: error.message }, 'Error during PostgreSQL pool shutdown');
       throw error;
     } finally {
       this.isShuttingDown = false;
@@ -154,13 +146,13 @@ class PostgresPool {
       const result = await pool.query(text, params);
       const duration = Date.now() - startTime;
 
-      logger.debug({ duration, rowCount: result.rowCount }, 'Query executed');
+      this.logger.debug({ duration, rowCount: result.rowCount }, 'Query executed');
 
       return result;
     } catch (error) {
       const duration = Date.now() - startTime;
 
-      logger.error(
+      this.logger.error(
         {
           error: error.message,
           duration,
@@ -225,13 +217,13 @@ class PostgresPool {
       if (rows.length > enforcedLimit) {
         rows = rows.slice(0, enforcedLimit);
         truncated = true;
-        logger.warn(
+        this.logger.warn(
           { returnedRows: result.rows.length, enforcedLimit },
           'Query returned more rows than limit, truncated'
         );
       }
       
-      logger.debug(
+      this.logger.debug(
         { 
           executionTime, 
           rowCount: rows.length, 
@@ -257,13 +249,13 @@ class PostgresPool {
       try {
         await client.query('ROLLBACK');
       } catch (rollbackError) {
-        logger.error(
+        this.logger.error(
           { error: rollbackError.message },
           'Failed to ROLLBACK transaction after error'
         );
       }
       
-      logger.error(
+      this.logger.error(
         {
           error: error.message,
           executionTime,
@@ -312,8 +304,36 @@ class PostgresPool {
   }
 }
 
-// Export singleton instance — does NOT register signal handlers (library must not own process lifecycle)
-export const pgPool = new PostgresPool();
+function readPgPoolConfigFromEnv() {
+  return {
+    host: process.env.PG_HOST,
+    port: Number(process.env.PG_PORT) || 5432,
+    user: process.env.PG_USER,
+    password: process.env.PG_PASSWORD,
+    database: process.env.PG_DATABASE,
+    ssl: process.env.PG_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    max: Number(process.env.PG_MAX_CONNECTIONS) || 10,
+    idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS) || 10000,
+    connectionTimeoutMillis: Number(process.env.PG_CONNECTION_TIMEOUT_MS) || 2000,
+  };
+}
+
+/**
+ * Get the lazily-created PostgreSQL pool singleton.
+ * Reads environment configuration on first use, never at module import time.
+ *
+ * @returns {PostgresPool}
+ */
+export function getPgPool() {
+  if (!pgPoolInstance) {
+    pgPoolInstance = new PostgresPool({
+      logger: createLogger(),
+      poolConfig: readPgPoolConfigFromEnv(),
+    });
+  }
+
+  return pgPoolInstance;
+}
 
 /**
  * Register graceful shutdown handlers for the pgPool singleton.
@@ -322,16 +342,18 @@ export const pgPool = new PostgresPool();
  */
 export function registerPgPoolShutdownHandlers() {
   process.on('SIGTERM', async () => {
+    const logger = createLogger();
     logger.info('SIGTERM received, shutting down gracefully');
-    await pgPool.shutdown();
+    await getPgPool().shutdown();
     process.exit(0);
   });
 
   process.on('SIGINT', async () => {
+    const logger = createLogger();
     logger.info('SIGINT received, shutting down gracefully');
-    await pgPool.shutdown();
+    await getPgPool().shutdown();
     process.exit(0);
   });
 }
 
-export default pgPool;
+export default getPgPool;

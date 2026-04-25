@@ -1,18 +1,22 @@
 import { createLogger } from '../utils/logger.js';
 
-const logger = createLogger();
+let queryGuardInstance = null;
 
 /**
  * Query guard to enforce security rules on SQL queries
  * Blocks dangerous patterns and enforces result limits
  */
 export class QueryGuard {
-  constructor() {
-    this.readOnly = (process.env.READ_ONLY !== undefined)
-      ? process.env.READ_ONLY === 'true'
-      : true;
-    this.maxTables = Number(process.env.MAX_TABLES) || 100;
-    this.maxColumns = Number(process.env.MAX_COLUMNS) || 200;
+  constructor({
+    readOnly = true,
+    maxTables = 100,
+    maxColumns = 200,
+    logger = createLogger(),
+  } = {}) {
+    this.logger = logger;
+    this.readOnly = readOnly;
+    this.maxTables = maxTables;
+    this.maxColumns = maxColumns;
 
     // Dangerous SQL patterns to block
     this.dangerousPatterns = [
@@ -32,7 +36,7 @@ export class QueryGuard {
       /\/\*/g, // Block comments
     ];
 
-    logger.info(
+    this.logger.info(
       {
         readOnly: this.readOnly,
         maxTables: this.maxTables,
@@ -75,7 +79,7 @@ export class QueryGuard {
     const isValid = reasons.length === 0;
 
     if (!isValid) {
-      logger.warn({ query: query.substring(0, 100), reasons }, 'Query blocked by guard');
+      this.logger.warn({ query: query.substring(0, 100), reasons }, 'Query blocked by guard');
     }
 
     return {
@@ -108,7 +112,7 @@ export class QueryGuard {
     }
 
     if (tables.length > this.maxTables) {
-      logger.warn(
+      this.logger.warn(
         {
           returned: this.maxTables,
           total: tables.length,
@@ -133,7 +137,7 @@ export class QueryGuard {
     }
 
     if (columns.length > this.maxColumns) {
-      logger.warn(
+      this.logger.warn(
         {
           returned: this.maxColumns,
           total: columns.length,
@@ -183,7 +187,25 @@ export class QueryGuard {
   }
 }
 
-// Export singleton instance
-export const queryGuard = new QueryGuard();
+/**
+ * Get the lazily-created query guard singleton.
+ * Reads environment configuration on first use, never at module import time.
+ *
+ * @returns {QueryGuard}
+ */
+export function getQueryGuard() {
+  if (!queryGuardInstance) {
+    queryGuardInstance = new QueryGuard({
+      readOnly: (process.env.READ_ONLY !== undefined)
+        ? process.env.READ_ONLY === 'true'
+        : true,
+      maxTables: Number(process.env.MAX_TABLES) || 100,
+      maxColumns: Number(process.env.MAX_COLUMNS) || 200,
+      logger: createLogger(),
+    });
+  }
 
-export default queryGuard;
+  return queryGuardInstance;
+}
+
+export default getQueryGuard;

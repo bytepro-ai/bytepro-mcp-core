@@ -1,25 +1,23 @@
 import { z } from 'zod';
 import { createLogger, auditLog } from '../utils/logger.js';
-import { createAdapterRegistry } from '../adapters/adapterRegistry.js';
-import * as responseFormatter from './responseFormatter.js';
-import { isValidSessionContext } from './sessionContext.js';
-import { CapabilityAction, evaluateCapability } from '../security/capabilities.js';
-import { QuotaDenialReason } from '../security/quotas.js';
 
-// Import tools
-import { listTablesTool } from '../tools/listTables.js';
-import { describeTableTool } from '../tools/describeTable.js';
-import { queryReadTool } from '../tools/queryRead.js';
-
-const logger = createLogger();
-const adapterRegistry = createAdapterRegistry();
+let toolRegistryInstance = null;
 
 /**
  * Tool registry for managing and executing MCP tools
  * Validates inputs, enforces security, and routes to adapters
  */
 export class ToolRegistry {
-  constructor() {
+  constructor({
+    logger = createLogger(),
+    adapterRegistry = null,
+  } = {}) {
+    this.logger = logger;
+    this.adapterRegistry = adapterRegistry;
+    this.responseFormatter = null;
+    this.isValidSessionContext = null;
+    this.CapabilityAction = null;
+    this.evaluateCapability = null;
     this.tools = new Map();
     this.server = null;
     // SECURITY: Session context injected at initialization (immutable)
@@ -33,6 +31,7 @@ export class ToolRegistry {
    */
   async initialize(server, sessionContext) {
     this.server = server;
+    await this._ensureRuntime();
     
     // SECURITY: Assert session context is bound before proceeding
     if (!sessionContext || !sessionContext.isBound) {
@@ -40,18 +39,28 @@ export class ToolRegistry {
     }
 
     // SECURITY: Verify session context is genuine
-    if (!isValidSessionContext(sessionContext)) {
+    if (!this.isValidSessionContext(sessionContext)) {
       throw new Error('SECURITY VIOLATION: Invalid session context instance');
     }
     
     this.sessionContext = sessionContext;
 
     // Register all available tools
+    const [
+      { listTablesTool },
+      { describeTableTool },
+      { queryReadTool },
+    ] = await Promise.all([
+      import('../tools/listTables.js'),
+      import('../tools/describeTable.js'),
+      import('../tools/queryRead.js'),
+    ]);
+
     this.registerTool(listTablesTool);
     this.registerTool(describeTableTool);
     this.registerTool(queryReadTool);
 
-    logger.info({
+    this.logger.info({
       tools: Array.from(this.tools.keys()),
       identity: this.sessionContext.identity,
       tenant: this.sessionContext.tenant,
@@ -80,7 +89,7 @@ export class ToolRegistry {
       handler,
     });
 
-    logger.debug({ tool: name }, 'Tool registered');
+    this.logger.debug({ tool: name }, 'Tool registered');
   }
 
   /**
@@ -104,15 +113,15 @@ export class ToolRegistry {
       
       // Only include tools that have explicit grants
       const authorizedTools = allTools.filter((tool) => {
-        const authzResult = evaluateCapability(
+        const authzResult = this.evaluateCapability(
           capabilities,
-          CapabilityAction.TOOL_INVOKE,
+          this.CapabilityAction.TOOL_INVOKE,
           tool.name
         );
         return authzResult.allowed;
       });
 
-      logger.debug({
+      this.logger.debug({
         totalTools: allTools.length,
         authorizedTools: authorizedTools.length,
       }, 'Tool list filtered by capabilities');
@@ -121,7 +130,7 @@ export class ToolRegistry {
     }
 
     // If no capabilities attached (shouldn't happen in normal flow), return empty list (default deny)
-    logger.warn('listTools called without capabilities attached (default deny)');
+    this.logger.warn('listTools called without capabilities attached (default deny)');
     return [];
   }
 
@@ -135,13 +144,15 @@ export class ToolRegistry {
     const startTime = Date.now();
 
     try {
+      await this._ensureRuntime();
+
       // SECURITY: Defensive assertion - session MUST be bound for data-plane ops
       if (!this.sessionContext || !this.sessionContext.isBound) {
         throw new Error('SECURITY VIOLATION: Tool execution attempted without bound session context');
       }
 
       // SECURITY: Verify session context is genuine
-      if (!isValidSessionContext(this.sessionContext)) {
+      if (!this.isValidSessionContext(this.sessionContext)) {
         throw new Error('SECURITY VIOLATION: Invalid session context instance');
       }
 
@@ -155,9 +166,9 @@ export class ToolRegistry {
 
       // BLOCK 2: AUTHORIZATION CHECK (after tool validation)
       // This is the primary enforcement point for capability-based authorization
-      const authzResult = evaluateCapability(
+      const authzResult = this.evaluateCapability(
         this.sessionContext.capabilities,
-        CapabilityAction.TOOL_INVOKE,
+        this.CapabilityAction.TOOL_INVOKE,
         name,
         {
           identity: this.sessionContext.identity,
@@ -186,7 +197,7 @@ export class ToolRegistry {
             {
               type: 'text',
               text: JSON.stringify(
-                responseFormatter.error({
+                this.responseFormatter.error({
                   code: 'AUTHORIZATION_DENIED',
                   message: 'Insufficient permissions to invoke this tool',
                   details: { tool: name },
@@ -214,7 +225,7 @@ export class ToolRegistry {
           identity: this.sessionContext.identity,
           sessionId: this.sessionContext.sessionId,
           capSetId: this.sessionContext.capabilities?.capSetId,
-          action: CapabilityAction.TOOL_INVOKE,
+          action: this.CapabilityAction.TOOL_INVOKE,
           target: name,
         });
 
@@ -237,7 +248,7 @@ export class ToolRegistry {
               {
                 type: 'text',
                 text: JSON.stringify(
-                  responseFormatter.error({
+                  this.responseFormatter.error({
                     code: 'RATE_LIMITED',
                     message: 'Request denied by quota policy',
                     details: { 
@@ -281,8 +292,8 @@ export class ToolRegistry {
             {
               type: 'text',
               text: JSON.stringify(
-                responseFormatter.error({
-                  code: responseFormatter.ErrorCodes.VALIDATION_ERROR,
+                this.responseFormatter.error({
+                  code: this.responseFormatter.ErrorCodes.VALIDATION_ERROR,
                   message: 'Invalid input',
                   details: { errors },
                 }),
@@ -296,7 +307,7 @@ export class ToolRegistry {
       }
 
       // Get adapter
-      const adapter = adapterRegistry.getAdapter();
+      const adapter = this.adapterRegistry.getAdapter();
 
       // SECURITY: Inject session context into adapter execution
       // Execute tool with bound context (identity + tenant)
@@ -322,7 +333,7 @@ export class ToolRegistry {
       });
 
       // Format response
-      const response = responseFormatter.success({
+      const response = this.responseFormatter.success({
         data: result,
         meta: {
           tool: name,
@@ -342,7 +353,7 @@ export class ToolRegistry {
       // Log audit with session context
       auditLog({
         action: name,
-        adapter: adapterRegistry.activeAdapter?.name || 'unknown',
+        adapter: this.adapterRegistry.activeAdapter?.name || 'unknown',
         identity: this.sessionContext?.identity || 'unknown',
         tenant: this.sessionContext?.tenant || 'unknown',
         input: args,
@@ -352,7 +363,7 @@ export class ToolRegistry {
       });
 
       // Format error response
-      const errorResponse = responseFormatter.fromError(error);
+      const errorResponse = this.responseFormatter.fromError(error);
 
       return {
         content: [
@@ -423,9 +434,59 @@ export class ToolRegistry {
       required,
     };
   }
+
+  async _ensureRuntime() {
+    const imports = [];
+
+    if (!this.adapterRegistry) {
+      imports.push(
+        import('../adapters/adapterRegistry.js').then(({ createAdapterRegistry }) => {
+          this.adapterRegistry = createAdapterRegistry();
+        })
+      );
+    }
+
+    if (!this.responseFormatter) {
+      imports.push(
+        import('./responseFormatter.js').then((responseFormatter) => {
+          this.responseFormatter = responseFormatter;
+        })
+      );
+    }
+
+    if (!this.isValidSessionContext) {
+      imports.push(
+        import('./sessionContext.js').then(({ isValidSessionContext }) => {
+          this.isValidSessionContext = isValidSessionContext;
+        })
+      );
+    }
+
+    if (!this.CapabilityAction || !this.evaluateCapability) {
+      imports.push(
+        import('../security/capabilities.js').then(({ CapabilityAction, evaluateCapability }) => {
+          this.CapabilityAction = CapabilityAction;
+          this.evaluateCapability = evaluateCapability;
+        })
+      );
+    }
+
+    await Promise.all(imports);
+  }
 }
 
-// Export singleton instance
-export const toolRegistry = new ToolRegistry();
+/**
+ * Get the lazily-created tool registry singleton.
+ * No registry, logger, or adapter registry is created at module import time.
+ *
+ * @returns {ToolRegistry}
+ */
+export function getToolRegistry() {
+  if (!toolRegistryInstance) {
+    toolRegistryInstance = new ToolRegistry({ logger: createLogger() });
+  }
 
-export default toolRegistry;
+  return toolRegistryInstance;
+}
+
+export default getToolRegistry;

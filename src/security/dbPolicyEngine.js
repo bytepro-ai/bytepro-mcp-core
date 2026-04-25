@@ -51,6 +51,19 @@ const PolicyDenialReason = Object.freeze({
 
 /**
  * DB-backed policy engine for table-level access control (v2)
+ *
+ * Use a two-stage lifecycle: construct the engine, then initialize it with an
+ * already-connected adapter and bound session context before enforcing access.
+ *
+ * @example
+ * const policyEngine = new DBPolicyEngine({ ttlMs: 300000 });
+ * await policyEngine.initialize(adapter, sessionContext);
+ * await policyEngine.assertAllowed({
+ *   tenant: sessionContext.tenant,
+ *   role: 'analyst',
+ *   tables: ['customers'],
+ *   now: Date.now(),
+ * });
  */
 export class DBPolicyEngine {
   constructor({ ttlMs = 300000 } = {}) {
