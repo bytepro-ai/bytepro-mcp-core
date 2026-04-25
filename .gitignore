@@ -24,6 +24,9 @@ yarn-error.log*
 .vscode/
 .idea/
 
+# Claude Code local config
+.claude/
+
 # Coverage
 coverage/
 
