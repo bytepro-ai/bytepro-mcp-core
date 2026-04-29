@@ -53,6 +53,7 @@ export { QueryGuard, getQueryGuard } from './security/queryGuard.js';
 export { validateQueryWithTables } from './security/queryValidator.js';
 export { enforceQueryPermissions, PermissionError } from './security/permissions.js';
 export { logQueryEvent, computeQueryFingerprint } from './security/auditLogger.js';
+export { AuditRecord } from './security/auditRecord.js';
 export { DBPolicyEngine } from './security/dbPolicyEngine.js';
 
 // Utilities
